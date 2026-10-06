@@ -1,1 +1,180 @@
 # ORDER-ajimaru
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harbor & Hearth QR Order + POS</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f7f4ef;--card:#fff;--tx:#1e2a32;--mut:#6b7780;--ac:#0f5c7a;--bd:#ddd6ca;--ok:#2f7d4f;--warn:#c27a10}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14191d;--card:#1e262c;--tx:#eceae4;--mut:#9aa6ae;--ac:#5bb5d6;--bd:#33404a;--ok:#5fc283;--warn:#e8a73c}}
+:root[data-theme="dark"]{--bg:#14191d;--card:#1e262c;--tx:#eceae4;--mut:#9aa6ae;--ac:#5bb5d6;--bd:#33404a;--ok:#5fc283;--warn:#e8a73c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+nav{display:flex;gap:6px;padding:10px;background:var(--card);border-bottom:1px solid var(--bd);overflow-x:auto}
+nav b{margin-right:auto;white-space:nowrap;align-self:center}
+button,select,input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:7px 12px}
+button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+nav button.on{background:var(--ac);color:#fff}
+main{max-width:980px;margin:0 auto;padding:14px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.e{font-size:34px}.m{color:var(--mut)}.r{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0}
+.tag{padding:2px 9px;border-radius:99px;font-size:12px;color:#fff}
+.new{background:var(--ac)}.preparing{background:var(--warn)}.served{background:var(--ok)}
+.timer{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#eaf5eb;color:var(--ok)}
+.timer.warn{background:#fff1d6;color:var(--warn)}
+.timer.danger{background:#ffe5e5;color:#b42318}
+.qr svg{width:100%;height:auto;background:#fff;padding:6px;border-radius:6px;box-sizing:border-box}
+.qr{text-align:center}
+#ticket{display:none}
+.receipt-paper{max-width:360px;margin:0 auto;padding:20px;background:var(--card);border:1px solid var(--bd);color:var(--tx)}
+.receipt-title{text-align:center;margin:16px 0;font-size:24px}
+.receipt-label{text-align:center;font-size:13px;color:var(--mut)}
+.receipt-recipient{display:flex;align-items:baseline;gap:6px;margin:14px 0 18px;font-size:13px}
+.receipt-recipient-name{white-space:nowrap}
+.receipt-recipient-line{flex:1;min-width:80px;height:1em;border-bottom:1px solid #666}
+.receipt-name-input{width:100%;box-sizing:border-box;margin-bottom:10px}
+.receipt-meta{font-size:13px;color:var(--mut);text-align:right}
+.receipt-items{margin:16px 0;border-top:1px dashed var(--bd);border-bottom:1px dashed var(--bd);padding:8px 0}
+.receipt-total{margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);font-size:20px}
+.receipt-thanks{text-align:center;margin:18px 0 8px;font-size:13px}
+@media print{body.tk main,body.tk nav{display:none}body.tk #ticket{display:block;width:72mm;font:14px monospace;color:#000}}
+@media print{nav,.noprint{display:none}body{background:#fff;color:#000}}
+@media print{.receipt-paper{width:72mm;max-width:72mm;box-sizing:border-box;margin:0 auto;padding:4mm;border:0;background:#fff;color:#000;font:12px/1.5 monospace}.receipt-meta{color:#000}.receipt-items{border-color:#888}.receipt-total{border-color:#000;font-size:18px}.receipt-thanks{margin-top:6mm}}
+</style></head><body>
+<nav><b>⚓ あじまるや & 中島駅</b>
+<button id="b-customer" onclick="go('customer')">Customer</button>
+<button id="b-kitchen" onclick="go('kitchen')">Kitchen</button>
+<button id="b-register" onclick="go('register')">Register 会計</button>
+<button id="b-qr" onclick="go('qr')">QR Sheet</button></nav>
+<main id="app"></main><div id="ticket"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const MENU=[
+ {id:1,cat:'定食',n:'唐揚げ定食',p:800,e:''},
+ {id:2,cat:'定食',n:'あじまる唐揚げ定食',p:900,e:''},
+ {id:3,cat:'定食',n:'とんかつ定食',p:880,e:''},
+ {id:4,cat:'定食',n:'みそとんかつ定食',p:900,e:''},
+ {id:5,cat:'定食',n:'アジフライ定食',p:850,e:''},
+ {id:6,cat:'定食',n:'ミックスフライ定食',p:920,e:''},
+ {id:7,cat:'定食',n:'プレーンナンセット',p:770,e:''},
+ {id:8,cat:'サブメニュー',n:'ご飯 小',p:150,e:'🍚'},
+ {id:9,cat:'サブメニュー',n:'ご飯 中',p:200,e:'🍚'},
+ {id:10,cat:'サブメニュー',n:'ご飯 大',p:250,e:'🍚'},
+ {id:15,cat:'サブメニュー',n:'その他',p:100,e:''},
+ {id:14,cat:'ドリンク',n:'生ビール',p:500,e:'🍺'}
+];
+const yen=n=>'¥'+Math.round(n).toLocaleString();
+const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const menuGroups=()=>[
+  ['定食', MENU.filter(m=>m.cat==='定食')],
+  ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
+  ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')]
+];
+let orders=[],view='customer',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,sel=null,receipt=null,bc=null,guestType='All',adultCount=2,childCount=0,allergy='なし';
+try{bc=new BroadcastChannel('hh')}catch(e){}
+function load(){try{orders=JSON.parse(localStorage.getItem('hh_orders')||'[]')}catch(e){orders=[]}try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
+function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}if(bc)bc.postMessage(1)}
+if(bc)bc.onmessage=()=>{load();draw()};
+addEventListener('storage',()=>{load();draw()});
+function go(v){view=v;draw()}
+function renderQrCell(el, value){
+  if(typeof qrcode === 'function'){
+    const q=qrcode(0,'M');
+    q.addData(value);
+    q.make();
+    el.innerHTML=q.createSvgTag(4);
+    return;
+  }
+  const img=document.createElement('img');
+  img.alt='QR code';
+  img.style.width='100%';
+  img.style.height='auto';
+  img.style.display='block';
+  img.src='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(value);
+  el.replaceChildren(img);
+}
+function draw(){
+ ['customer','kitchen','register','qr'].forEach(v=>document.getElementById('b-'+v).className=v==view?'on':'');
+ document.getElementById('app').innerHTML=({customer,kitchen,register,qr})[view]();
+ autoPrint();
+ if(view=='qr')document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));
+}
+const base=()=>location.href.split('#')[0];
+const customerUrl=(tableNo)=>{
+  const url = new URL(base(), window.location.href);
+  url.hash = `#t=${tableNo}`;
+  return url.toString();
+};
+const total=o=>o.items.reduce((s,i)=>s+i.p*i.q,0);
+function countdownInfo(ts){
+  const remainingMs=Math.max(0,20*60*1000-(Date.now()-ts));
+  const totalSec=Math.ceil(remainingMs/1000);
+  const min=Math.floor(totalSec/60);
+  const sec=totalSec%60;
+  const label=`${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  let tone='timer';
+  if(totalSec<=5*60)tone='timer warn';
+  if(totalSec<=2*60)tone='timer danger';
+  return {label,tone};
+}
+// Customer
+function customer(){
+ const cnt=Object.values(cart).reduce((a,b)=>a+b,0),sum=MENU.reduce((s,m)=>s+(m.id===15?otherPrice:m.p)*(cart[m.id]||0)+100*(riceLarge[m.id]||0),0),totalPeople=adultCount+childCount;
+ const mine=orders.filter(o=>o.table==table&&!o.paid);
+ return `<div class="r" style="flex-wrap:wrap"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">Table ${table}</h2><select onchange="table=+this.value;draw()">${Array.from({length:40},(_,i)=>`<option ${i+1==table?'selected':''}>${i+1}</option>`).join('')}</select></div><label class="m" style="display:flex;align-items:center;gap:8px">Gender<select onchange="guestType=this.value;draw()"><option ${guestType=='All'?'selected':''}>All</option><option ${guestType=='Men'?'selected':''}>Men</option><option ${guestType=='Women'?'selected':''}>Women</option></select></label><label class="m" style="display:flex;align-items:center;gap:8px">大人<select onchange="adultCount=+this.value;draw()">${Array.from({length:10},(_,i)=>`<option value="${i+1}" ${adultCount==i+1?'selected':''}>${i+1}</option>`).join('')}</select></label><label class="m" style="display:flex;align-items:center;gap:8px">子ども<select onchange="childCount=+this.value;draw()">${Array.from({length:10},(_,i)=>`<option value="${i}" ${childCount==i?'selected':''}>${i}</option>`).join('')}</select></label><label class="m" style="display:flex;align-items:center;gap:8px">アレルギー<select onchange="allergy=this.value;draw()"><option ${allergy=='なし'?'selected':''}>なし</option><option ${allergy=='あり'?'selected':''}>あり</option></select></label></div>
+ <div class="c" style="margin:10px 0"><div class="m" style="font-size:12px;margin-bottom:6px">Table info</div><div class="r" style="margin:0"><span>大人 ${adultCount} · 子ども ${childCount} · ${guestType}</span><span>アレルギー ${allergy}</span></div></div>
+ ${mine.length?`<div class="c" style="margin-bottom:10px"><b>Your orders</b>${mine.map(o=>`<div class="r"><span>#${o.id} · 大人 ${o.adultCount || adultCount} · 子ども ${o.childCount || childCount} · ${o.guestType||'All'} · アレルギー ${o.allergy || 'なし'} · ${o.items.map(i=>i.n+'×'+i.q).join(', ')}</span><span class="tag ${o.status}">${o.status=='new'?'Received':o.status=='preparing'?'Preparing':'Served'}</span></div>`).join('')}</div>`:''}
+ ${menuGroups().map(([cat,items])=>`<div style="margin-top:14px"><div class="m" style="font-weight:700;margin-bottom:8px">${cat}</div><div class="g">${items.map(m=>`<div class="c"><div class="e">${m.e}</div><b>${m.n}</b>${m.id===15?`<label style="display:block;margin-top:8px">内容 <select onchange="setOtherPreset(this.value)"><option value="" ${otherPreset===''?'selected':''}>選択してください</option>${MENU.filter(item=>item.cat==='定食').map(item=>`<option value="${item.id}" ${otherPreset==item.id?'selected':''}>${item.id} ${item.n} ${yen(item.p)}</option>`).join('')}</select></label><label style="display:block;margin-top:8px">料金（円） <input type="number" min="0" step="1" value="${otherPrice}" onchange="otherPrice=Math.max(0,Math.round(+this.value||0));draw()"></label>`:`<div class="m">${yen(m.p)}</div>`}${m.cat==='定食'?`<label style="display:block;margin-top:8px">ご飯大盛り <select onchange="riceLarge[${m.id}]=+this.value;draw()"><option value="0" ${!(riceLarge[m.id]||0)?'selected':''}>0個（普通）</option>${Array.from({length:cart[m.id]||0},(_,i)=>i+1).map(q=>`<option value="${q}" ${riceLarge[m.id]===q?'selected':''}>${q}個を大盛り</option>`).join('')}</select> +${yen(100)} / 個</label>`:''}${m.id===7?`<label style="display:block;margin-top:8px">辛さ <select onchange="naanSpice=this.value;draw()"><option value="" ${naanSpice===''?'selected':''}>選択</option>${[0,1,2].map(level=>`<option value="${level}" ${naanSpice==level?'selected':''}>${level}</option>`).join('')}</select></label>`:''}<div class="r"><button onclick="qty(${m.id},-1)">−</button><b>${cart[m.id]||0}</b><button onclick="qty(${m.id},1)">+</button></div></div>`).join('')}</div></div>`).join('')}
+ <div class="c r" style="margin-top:12px"><b>${cnt} items · ${yen(sum)} · ${totalPeople}人</b><button class="p" ${cnt?'':'disabled'} onclick="send()">Send order</button></div>`}
+function qty(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);riceLarge[id]=Math.min(riceLarge[id]||0,cart[id]);draw()}
+function setOtherPreset(id){const item=MENU.find(m=>m.id===Number(id));otherPreset=item?String(item.id):'';otherName=item?item.n:'';otherPrice=item?item.p:100;draw()}
+function send(){const items=MENU.filter(m=>cart[m.id]).flatMap(m=>{const largeQty=m.cat==='定食'?Math.min(riceLarge[m.id]||0,cart[m.id]):0,normalQty=cart[m.id]-largeQty,spice=m.id===7&&naanSpice!==''?`（辛さ ${naanSpice}）`:'';const price=m.id===15?otherPrice:m.p,name=m.id===15?(otherName||m.n):m.n;return [normalQty?{n:name+spice,p:price,q:normalQty}:null,largeQty?{n:name+'（ご飯大）'+spice,p:price+100,q:largeQty}:null].filter(Boolean)});if(!items.length)return;
+ load();orders.push({id:(orders.reduce((a,o)=>Math.max(a,o.id),0)+1),table,items,status:'new',paid:false,guestType,adultCount,childCount,allergy,t:Date.now()});cart={};riceLarge={};naanSpice='';otherPreset='';otherName='';otherPrice=100;save();draw()}
+// Kitchen
+let auto=true;
+function ticketHTML(o){return `<b style="font-size:22px">Table ${o.table}</b> &nbsp;#${o.id}<br>${new Date(o.t).toLocaleTimeString()}<br>大人: ${o.adultCount || 0} / 子ども: ${o.childCount || 0}<br>アレルギー: ${o.allergy || 'なし'}<br>${o.guestType||'All'}<hr>${o.items.map(i=>`<div style="font-size:18px">${i.q}× ${i.n}</div>`).join('')}<hr>`}
+function printTicket(id){const o=orders.find(x=>x.id==id);if(!o)return;document.getElementById('ticket').innerHTML=ticketHTML(o);document.body.classList.add('tk');setTimeout(()=>{window.print();document.body.classList.remove('tk');setTimeout(autoPrint,500)},100)}
+function autoPrint(){if(view!='kitchen'||!auto||document.body.classList.contains('tk'))return;let done=[];try{done=JSON.parse(localStorage.getItem('hh_printed')||'[]')}catch(e){}
+ const n=orders.find(o=>o.status=='new'&&!o.paid&&!done.includes(o.id));if(!n)return;done.push(n.id);try{localStorage.setItem('hh_printed',JSON.stringify(done))}catch(e){}printTicket(n.id)}
+function kitchen(){
+ const q=orders.filter(o=>o.status!='served'&&!o.paid);
+ return `<div class="r"><h2>Kitchen Display</h2><label><input type="checkbox" ${auto?'checked':''} onchange="auto=this.checked;draw()"> Auto-print new orders</label></div>${q.length?'':'<p class="m">No open tickets.</p>'}<div class="g">${q.map(o=>{const cd=countdownInfo(o.t); return `<div class="c"><div class="r"><b>Table ${o.table} · #${o.id}</b><span class="tag ${o.status}">${o.status}</span><span class="${cd.tone}">${cd.label}</span></div><div class="m">大人 ${o.adultCount || 0} · 子ども ${o.childCount || 0} · ${o.guestType || 'All'} · アレルギー ${o.allergy || 'なし'}</div>${o.items.map(i=>`<div>${i.q}× ${i.n}</div>`).join('')}<div class="m">${new Date(o.t).toLocaleTimeString()} · 20:00 countdown</div><div class="r">${o.status=='new'?`<button class="p" onclick="setS(${o.id},'preparing')">Start cooking</button>`:`<button class="p" onclick="setS(${o.id},'served')">Mark ready / served</button>`}<button onclick="printTicket(${o.id})">Print</button></div></div>`}).join('')}</div>`}
+function setS(id,s){load();orders.find(o=>o.id==id).status=s;save();draw()}
+// Register
+let disc=0,meth='QR pay',receiptHistory=[],showReceiptHistory=false;
+function register(){
+ if(receipt){const r=receipt;return `<section class="receipt-paper"><div style="text-align:center;font-weight:700">あじまるや</div><div class="receipt-label">レシート</div><h2 class="receipt-title">領収書</h2><label class="noprint">宛名<input class="receipt-name-input" placeholder="宛名を入力" value="${escapeHtml(r.name||'')}" oninput="setReceiptName(this.value)"></label><div class="receipt-recipient"><span>お名前</span><span class="receipt-recipient-name" id="receipt-name-preview">${escapeHtml(r.name||'')}</span><span class="receipt-recipient-line"></span><span>様</span></div><div class="receipt-meta">発行日 ${new Date(r.t).toLocaleString()}<br>テーブル ${r.table}</div><div class="receipt-items">${r.items.map(i=>`<div class="r"><span>${i.n} × ${i.q}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}</div><div class="r"><span>小計</span><span>${yen(r.sub)}</span></div>${r.disc?`<div class="r"><span>割引 (${r.disc}%)</span><span>−${yen(r.sub-r.tot)}</span></div>`:''}<div class="r receipt-total"><b>領収金額</b><b>${yen(r.tot)}</b></div><div class="r"><span>お支払い</span><span>${r.meth}</span></div><div class="receipt-thanks">上記正に領収いたしました</div><div class="r noprint"><button class="p" onclick="window.print()">印刷</button><button onclick="receipt=null;draw()">戻る</button></div></section>`}
+ if(showReceiptHistory)return `<div class="r"><h2>領収書履歴</h2><button onclick="showReceiptHistory=false;draw()">戻る</button></div>${receiptHistory.length?receiptHistory.map((r,i)=>`<div class="c r"><span>Table ${r.table} · ${new Date(r.t).toLocaleString()} · ${yen(r.tot)} · ${r.meth}</span><button onclick="openReceipt(${i})">再表示</button></div>`).join(''):'<p class="m">領収書はまだありません。</p>'}`;
+ const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
+ if(!tabs.includes(sel))sel=tabs[0]||null;
+ let body='<p class="m">No open tables.</p>';
+ if(sel){const os=orders.filter(o=>o.table==sel&&!o.paid),items=os.flatMap(o=>o.items),sub=os.reduce((s,o)=>s+total(o),0),tot=sub*(1-disc/100);
+  const orderList=os.map(o=>`<div class="c" style="margin-top:8px"><div class="r"><b>Order #${o.id}</b><button onclick="deleteOrder(${o.id})">Delete</button></div>${o.items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<div class="m">大人 ${o.adultCount||0} · 子ども ${o.childCount||0} · ${o.guestType||'All'} · アレルギー ${o.allergy||'なし'}</div></div>`).join('');
+  body=`<div class="c">${orderList || '<p class="m">No orders.</p>'}<hr><div class="r"><span>Subtotal</span><span>${yen(sub)}</span></div>
+  <div class="r"><span>Discount %</span><input type="number" min="0" max="100" value="${disc}" style="width:80px" onchange="disc=Math.min(100,Math.max(0,+this.value||0));draw()"></div>
+  <div class="r"><span>Payment</span><select onchange="meth=this.value">${['Cash','Card','QR pay'].map(m=>`<option ${m==meth?'selected':''}>${m}</option>`).join('')}</select></div>
+  <div class="r"><b>Total</b><b>${yen(tot)}</b></div><button class="p" onclick="closeT()">Close table</button></div>`}
+ return `<div class="r"><h2>Register 会計</h2><button onclick="showReceiptHistory=true;draw()">領収書履歴 (${receiptHistory.length})</button></div><div class="r" style="justify-content:flex-start;flex-wrap:wrap">${tabs.map(t=>`<button class="${t==sel?'p':''}" onclick="sel=${t};draw()">Table ${t}</button>`).join('')}</div>${body}`}
+function setReceiptName(name){if(!receipt)return;receipt.name=name;const index=receiptHistory.indexOf(receipt);if(index>=0)try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}const preview=document.getElementById('receipt-name-preview');if(preview)preview.textContent=name}
+function openReceipt(index){receipt=receiptHistory[index];showReceiptHistory=false;draw()}
+function deleteOrder(id){
+ load();
+ orders = orders.filter(o => o.id !== id);
+ save();
+ if(sel && !orders.some(o => o.table === sel && !o.paid)) {
+   const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
+   sel = tabs[0] || null;
+ }
+ draw();
+}
+function closeT(){load();const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os.reduce((s,o)=>s+total(o),0);
+ receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:Date.now()};receiptHistory.unshift(receipt);try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}
+ os.forEach(o=>{o.paid=true;o.status='served';o.payment={meth,disc,at:Date.now()}});disc=0;save();draw()}
+// QR sheet
+let qbase='';
+function qr(){const b=qbase||base();return `<h2>Table QR Sheet (1–40)</h2><div class="c noprint" style="margin-bottom:10px"><div class="m">Page address customers will open (must be reachable from their phones)</div><input value="${b}" style="width:100%;box-sizing:border-box" onchange="qbase=this.value.trim();draw()">${/^file:/i.test(b)?'<p style="color:var(--warn)">⚠ file:// addresses only work on this PC. Host the page, then paste its public https address here.</p>':''}</div><p class="m noprint">Each QR code opens the Customer page for that table only. <button onclick="window.print()">Print</button></p><div class="g">${Array.from({length:40},(_,i)=>`<div class="c qr"><div data-q="${i+1}"></div><b>Table ${i+1}</b></div>`).join('')}</div>`}
+load();
+const m=location.hash.match(/t=(\d+)/);if(m){table=Math.min(40,Math.max(1,+m[1]))}
+setInterval(()=>{if(view==='kitchen')draw();},1000);
+draw();
+</script></body></html>
