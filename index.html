@@ -30,6 +30,7 @@ main{max-width:980px;margin:0 auto;padding:14px}
 .receipt-label{text-align:center;font-size:13px;color:var(--mut)}
 .receipt-recipient{display:flex;align-items:baseline;gap:6px;margin:14px 0 18px;font-size:13px}
 .receipt-recipient-line{flex:1;min-width:80px;height:1em;border-bottom:1px solid #666}
+.receipt-name-input{width:100%;box-sizing:border-box;margin-bottom:10px}
 .receipt-meta{font-size:13px;color:var(--mut);text-align:right}
 .receipt-items{margin:16px 0;border-top:1px dashed var(--bd);border-bottom:1px dashed var(--bd);padding:8px 0}
 .receipt-total{margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);font-size:20px}
@@ -61,6 +62,7 @@ const MENU=[
  {id:14,cat:'ドリンク',n:'生ビール',p:500,e:'🍺'}
 ];
 const yen=n=>'¥'+Math.round(n).toLocaleString();
+const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const menuGroups=()=>[
   ['定食', MENU.filter(m=>m.cat==='定食')],
   ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
@@ -138,7 +140,7 @@ function setS(id,s){load();orders.find(o=>o.id==id).status=s;save();draw()}
 // Register
 let disc=0,meth='QR pay',receiptHistory=[],showReceiptHistory=false;
 function register(){
- if(receipt){const r=receipt;return `<section class="receipt-paper"><div style="text-align:center;font-weight:700">あじまるや</div><div class="receipt-label">レシート</div><h2 class="receipt-title">領収書</h2><div class="receipt-recipient"><span>お名前</span><span class="receipt-recipient-line"></span><span>様</span></div><div class="receipt-meta">発行日 ${new Date(r.t).toLocaleString()}<br>テーブル ${r.table}</div><div class="receipt-items">${r.items.map(i=>`<div class="r"><span>${i.n} × ${i.q}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}</div><div class="r"><span>小計</span><span>${yen(r.sub)}</span></div>${r.disc?`<div class="r"><span>割引 (${r.disc}%)</span><span>−${yen(r.sub-r.tot)}</span></div>`:''}<div class="r receipt-total"><b>領収金額</b><b>${yen(r.tot)}</b></div><div class="r"><span>お支払い</span><span>${r.meth}</span></div><div class="receipt-thanks">上記正に領収いたしました</div><div class="r noprint"><button class="p" onclick="window.print()">印刷</button><button onclick="receipt=null;draw()">戻る</button></div></section>`}
+ if(receipt){const r=receipt;return `<section class="receipt-paper"><div style="text-align:center;font-weight:700">あじまるや</div><div class="receipt-label">レシート</div><h2 class="receipt-title">領収書</h2><label class="noprint">宛名<input class="receipt-name-input" placeholder="宛名を入力" value="${escapeHtml(r.name||'')}" oninput="setReceiptName(this.value)"></label><div class="receipt-recipient"><span>お名前</span><span class="receipt-recipient-line" id="receipt-name-preview">${escapeHtml(r.name||'')}</span><span>様</span></div><div class="receipt-meta">発行日 ${new Date(r.t).toLocaleString()}<br>テーブル ${r.table}</div><div class="receipt-items">${r.items.map(i=>`<div class="r"><span>${i.n} × ${i.q}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}</div><div class="r"><span>小計</span><span>${yen(r.sub)}</span></div>${r.disc?`<div class="r"><span>割引 (${r.disc}%)</span><span>−${yen(r.sub-r.tot)}</span></div>`:''}<div class="r receipt-total"><b>領収金額</b><b>${yen(r.tot)}</b></div><div class="r"><span>お支払い</span><span>${r.meth}</span></div><div class="receipt-thanks">上記正に領収いたしました</div><div class="r noprint"><button class="p" onclick="window.print()">印刷</button><button onclick="receipt=null;draw()">戻る</button></div></section>`}
  if(showReceiptHistory)return `<div class="r"><h2>領収書履歴</h2><button onclick="showReceiptHistory=false;draw()">戻る</button></div>${receiptHistory.length?receiptHistory.map((r,i)=>`<div class="c r"><span>Table ${r.table} · ${new Date(r.t).toLocaleString()} · ${yen(r.tot)} · ${r.meth}</span><button onclick="openReceipt(${i})">再表示</button></div>`).join(''):'<p class="m">領収書はまだありません。</p>'}`;
  const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
  if(!tabs.includes(sel))sel=tabs[0]||null;
@@ -150,6 +152,7 @@ function register(){
   <div class="r"><span>Payment</span><select onchange="meth=this.value">${['Cash','Card','QR pay'].map(m=>`<option ${m==meth?'selected':''}>${m}</option>`).join('')}</select></div>
   <div class="r"><b>Total</b><b>${yen(tot)}</b></div><button class="p" onclick="closeT()">Close table</button></div>`}
  return `<div class="r"><h2>Register 会計</h2><button onclick="showReceiptHistory=true;draw()">領収書履歴 (${receiptHistory.length})</button></div><div class="r" style="justify-content:flex-start;flex-wrap:wrap">${tabs.map(t=>`<button class="${t==sel?'p':''}" onclick="sel=${t};draw()">Table ${t}</button>`).join('')}</div>${body}`}
+function setReceiptName(name){if(!receipt)return;receipt.name=name;const index=receiptHistory.indexOf(receipt);if(index>=0)try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}const preview=document.getElementById('receipt-name-preview');if(preview)preview.textContent=name}
 function openReceipt(index){receipt=receiptHistory[index];showReceiptHistory=false;draw()}
 function deleteOrder(id){
  load();
