@@ -86,9 +86,22 @@ function draw(){
  ['customer','kitchen','register','qr'].forEach(v=>document.getElementById('b-'+v).className=v==view?'on':'');
  document.getElementById('app').innerHTML=({customer,kitchen,register,qr})[view]();
  autoPrint();
- if(view=='qr')document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));
+ if(view=='qr'){
+  document.querySelectorAll('[data-q]').forEach(d=>{
+   const value = customerUrl(d.dataset.q);
+   renderQrCell(d, value || 'https://example.com/');
+  });
+ }
 }
 const base=()=>location.href.split('#')[0];
+function resolveQrBase(){
+  const configured=(qbase||'').trim();
+  if(configured) return configured.replace(/#.*$/,'');
+  if(location.protocol==='http:' || location.protocol==='https:'){
+    return new URL(location.href).origin + new URL(location.href).pathname;
+  }
+  return '';
+}
 function parseReadTableIdsFromHash(){
   const hash=(location.hash||'').replace(/^#/, '');
   const params = new URLSearchParams(hash.includes('=') ? hash : `t=${hash}`);
@@ -104,7 +117,9 @@ function applyQrReadTableFromHash(){
   if(ids.length){ table = ids[0]; }
 }
 const customerUrl=(tableNo)=>{
-  const url = new URL(base(), window.location.href);
+  const qrBase = resolveQrBase();
+  if(!qrBase) return '';
+  const url = new URL(qrBase, window.location.href);
   url.hash = `#t=${tableNo}`;
   return url.toString();
 };
@@ -171,7 +186,7 @@ function closeT(){load();const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os
  os.forEach(o=>{o.paid=true;o.status='served';o.payment={meth,disc,at:Date.now()}});disc=0;save();draw()}
 // QR sheet
 let qbase='';
-function qr(){const b=qbase||base();return `<h2>Table QR Sheet (1–40)</h2><div class="c noprint" style="margin-bottom:10px"><div class="m">Page address customers will open (must be reachable from their phones)</div><input value="${b}" style="width:100%;box-sizing:border-box" onchange="qbase=this.value.trim();draw()">${/^file:/i.test(b)?'<p style="color:var(--warn)">⚠ file:// addresses only work on this PC. Host the page, then paste its public https address here.</p>':''}</div><p class="m noprint">Each QR code opens the Customer page for that table only. <button onclick="window.print()">Print</button></p><div class="g">${Array.from({length:40},(_,i)=>`<div class="c qr"><div data-q="${i+1}"></div><b>Table ${i+1}</b></div>`).join('')}</div>`}
+function qr(){const b=qbase||resolveQrBase();return `<h2>Table QR Sheet (1–40)</h2><div class="c noprint" style="margin-bottom:10px"><div class="m">Page address customers will open (must be reachable from their phones)</div><input value="${b}" style="width:100%;box-sizing:border-box" onchange="qbase=this.value.trim();draw()">${/^file:/i.test(String(b||''))||!b?'<p style="color:var(--warn)">⚠ file:// or local URLs will not scan from a phone. Host the page, then paste its public https address here.</p>':''}</div><p class="m noprint">Each QR code opens the Customer page for that table only. <button onclick="window.print()">Print</button></p><div class="g">${Array.from({length:40},(_,i)=>`<div class="c qr"><div data-q="${i+1}"></div><b>Table ${i+1}</b></div>`).join('')}</div>`}
 load();
 applyQrReadTableFromHash();
 setInterval(()=>{if(view==='kitchen')draw();},1000);
