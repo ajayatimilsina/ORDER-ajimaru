@@ -135,11 +135,22 @@ function register(){
  if(!tabs.includes(sel))sel=tabs[0]||null;
  let body='<p class="m">No open tables.</p>';
  if(sel){const os=orders.filter(o=>o.table==sel&&!o.paid),items=os.flatMap(o=>o.items),sub=os.reduce((s,o)=>s+total(o),0),tot=sub*(1-disc/100);
-  body=`<div class="c">${items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<hr><div class="r"><span>Subtotal</span><span>${yen(sub)}</span></div>
+  const orderList=os.map(o=>`<div class="c" style="margin-top:8px"><div class="r"><b>Order #${o.id}</b><button onclick="deleteOrder(${o.id})">Delete</button></div>${o.items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<div class="m">大人 ${o.adultCount||0} · 子ども ${o.childCount||0} · ${o.guestType||'All'} · アレルギー ${o.allergy||'なし'}</div></div>`).join('');
+  body=`<div class="c">${orderList || '<p class="m">No orders.</p>'}<hr><div class="r"><span>Subtotal</span><span>${yen(sub)}</span></div>
   <div class="r"><span>Discount %</span><input type="number" min="0" max="100" value="${disc}" style="width:80px" onchange="disc=Math.min(100,Math.max(0,+this.value||0));draw()"></div>
   <div class="r"><span>Payment</span><select onchange="meth=this.value">${['Cash','Card','QR pay'].map(m=>`<option ${m==meth?'selected':''}>${m}</option>`).join('')}</select></div>
   <div class="r"><b>Total</b><b>${yen(tot)}</b></div><button class="p" onclick="closeT()">Close table</button></div>`}
  return `<h2>Register 会計</h2><div class="r" style="justify-content:flex-start;flex-wrap:wrap">${tabs.map(t=>`<button class="${t==sel?'p':''}" onclick="sel=${t};draw()">Table ${t}</button>`).join('')}</div>${body}`}
+function deleteOrder(id){
+ load();
+ orders = orders.filter(o => o.id !== id);
+ save();
+ if(sel && !orders.some(o => o.table === sel && !o.paid)) {
+   const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
+   sel = tabs[0] || null;
+ }
+ draw();
+}
 function closeT(){load();const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os.reduce((s,o)=>s+total(o),0);
  receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:Date.now()};
  os.forEach(o=>{o.paid=true;o.status='served';o.payment={meth,disc,at:Date.now()}});disc=0;save();draw()}
