@@ -58,7 +58,7 @@ const menuGroups=()=>[
 ];
 let orders=[],view='customer',table=1,cart={},riceLarge={},naanSpice='',sel=null,receipt=null,bc=null,guestType='All',adultCount=2,childCount=0,allergy='なし';
 try{bc=new BroadcastChannel('hh')}catch(e){}
-function load(){try{orders=JSON.parse(localStorage.getItem('hh_orders')||'[]')}catch(e){orders=[]}}
+function load(){try{orders=JSON.parse(localStorage.getItem('hh_orders')||'[]')}catch(e){orders=[]}try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
 function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}if(bc)bc.postMessage(1)}
 if(bc)bc.onmessage=()=>{load();draw()};
 addEventListener('storage',()=>{load();draw()});
@@ -126,9 +126,10 @@ function kitchen(){
  return `<div class="r"><h2>Kitchen Display</h2><label><input type="checkbox" ${auto?'checked':''} onchange="auto=this.checked;draw()"> Auto-print new orders</label></div>${q.length?'':'<p class="m">No open tickets.</p>'}<div class="g">${q.map(o=>{const cd=countdownInfo(o.t); return `<div class="c"><div class="r"><b>Table ${o.table} · #${o.id}</b><span class="tag ${o.status}">${o.status}</span><span class="${cd.tone}">${cd.label}</span></div><div class="m">大人 ${o.adultCount || 0} · 子ども ${o.childCount || 0} · ${o.guestType || 'All'} · アレルギー ${o.allergy || 'なし'}</div>${o.items.map(i=>`<div>${i.q}× ${i.n}</div>`).join('')}<div class="m">${new Date(o.t).toLocaleTimeString()} · 20:00 countdown</div><div class="r">${o.status=='new'?`<button class="p" onclick="setS(${o.id},'preparing')">Start cooking</button>`:`<button class="p" onclick="setS(${o.id},'served')">Mark ready / served</button>`}<button onclick="printTicket(${o.id})">Print</button></div></div>`}).join('')}</div>`}
 function setS(id,s){load();orders.find(o=>o.id==id).status=s;save();draw()}
 // Register
-let disc=0,meth='Cash';
+let disc=0,meth='QR pay',receiptHistory=[],showReceiptHistory=false;
 function register(){
  if(receipt){const r=receipt;return `<div class="c" style="max-width:360px;margin:auto"><h3>あじまるや</h3><div class="m">Table ${r.table} · ${new Date(r.t).toLocaleString()}</div><hr>${r.items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<hr><div class="r"><span>Subtotal</span><span>${yen(r.sub)}</span></div><div class="r"><span>Discount ${r.disc}%</span><span>−${yen(r.sub-r.tot)}</span></div><div class="r"><b>Total</b><b>${yen(r.tot)}</b></div><div class="m">Paid by ${r.meth}</div><div class="r noprint"><button class="p" onclick="window.print()">Print receipt</button><button onclick="receipt=null;draw()">Done</button></div></div>`}
+ if(showReceiptHistory)return `<div class="r"><h2>領収書履歴</h2><button onclick="showReceiptHistory=false;draw()">戻る</button></div>${receiptHistory.length?receiptHistory.map((r,i)=>`<div class="c r"><span>Table ${r.table} · ${new Date(r.t).toLocaleString()} · ${yen(r.tot)} · ${r.meth}</span><button onclick="openReceipt(${i})">再表示</button></div>`).join(''):'<p class="m">領収書はまだありません。</p>'}`;
  const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
  if(!tabs.includes(sel))sel=tabs[0]||null;
  let body='<p class="m">No open tables.</p>';
@@ -138,7 +139,8 @@ function register(){
   <div class="r"><span>Discount %</span><input type="number" min="0" max="100" value="${disc}" style="width:80px" onchange="disc=Math.min(100,Math.max(0,+this.value||0));draw()"></div>
   <div class="r"><span>Payment</span><select onchange="meth=this.value">${['Cash','Card','QR pay'].map(m=>`<option ${m==meth?'selected':''}>${m}</option>`).join('')}</select></div>
   <div class="r"><b>Total</b><b>${yen(tot)}</b></div><button class="p" onclick="closeT()">Close table</button></div>`}
- return `<h2>Register 会計</h2><div class="r" style="justify-content:flex-start;flex-wrap:wrap">${tabs.map(t=>`<button class="${t==sel?'p':''}" onclick="sel=${t};draw()">Table ${t}</button>`).join('')}</div>${body}`}
+ return `<div class="r"><h2>Register 会計</h2><button onclick="showReceiptHistory=true;draw()">領収書履歴 (${receiptHistory.length})</button></div><div class="r" style="justify-content:flex-start;flex-wrap:wrap">${tabs.map(t=>`<button class="${t==sel?'p':''}" onclick="sel=${t};draw()">Table ${t}</button>`).join('')}</div>${body}`}
+function openReceipt(index){receipt=receiptHistory[index];showReceiptHistory=false;draw()}
 function deleteOrder(id){
  load();
  orders = orders.filter(o => o.id !== id);
@@ -150,7 +152,7 @@ function deleteOrder(id){
  draw();
 }
 function closeT(){load();const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os.reduce((s,o)=>s+total(o),0);
- receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:Date.now()};
+ receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:Date.now()};receiptHistory.unshift(receipt);try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}
  os.forEach(o=>{o.paid=true;o.status='served';o.payment={meth,disc,at:Date.now()}});disc=0;save();draw()}
 // QR sheet
 let qbase='';
