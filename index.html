@@ -28,7 +28,7 @@ main{max-width:980px;margin:0 auto;padding:14px}
 @media print{body.tk main,body.tk nav{display:none}body.tk #ticket{display:block;width:72mm;font:14px monospace;color:#000}}
 @media print{nav,.noprint{display:none}body{background:#fff;color:#000}}
 </style></head><body>
-<nav><b>⚓ あじまる & 中島駅</b>
+<nav><b>⚓ あじまるや & 中島駅</b>
 <button id="b-customer" onclick="go('customer')">Customer</button>
 <button id="b-kitchen" onclick="go('kitchen')">Kitchen</button>
 <button id="b-register" onclick="go('register')">Register 会計</button>
@@ -128,7 +128,7 @@ function setS(id,s){load();orders.find(o=>o.id==id).status=s;save();draw()}
 // Register
 let disc=0,meth='Cash';
 function register(){
- if(receipt){const r=receipt;return `<div class="c" style="max-width:360px;margin:auto"><h3>Harbor & Hearth</h3><div class="m">Table ${r.table} · ${new Date(r.t).toLocaleString()}</div><hr>${r.items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<hr><div class="r"><span>Subtotal</span><span>${yen(r.sub)}</span></div><div class="r"><span>Discount ${r.disc}%</span><span>−${yen(r.sub-r.tot)}</span></div><div class="r"><b>Total</b><b>${yen(r.tot)}</b></div><div class="m">Paid by ${r.meth}</div><div class="r noprint"><button class="p" onclick="window.print()">Print receipt</button><button onclick="receipt=null;draw()">Done</button></div></div>`}
+ if(receipt){const r=receipt;return `<div class="c" style="max-width:360px;margin:auto"><h3>あじまるや</h3><div class="m">Table ${r.table} · ${new Date(r.t).toLocaleString()}</div><hr>${r.items.map(i=>`<div class="r"><span>${i.q}× ${i.n}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}<hr><div class="r"><span>Subtotal</span><span>${yen(r.sub)}</span></div><div class="r"><span>Discount ${r.disc}%</span><span>−${yen(r.sub-r.tot)}</span></div><div class="r"><b>Total</b><b>${yen(r.tot)}</b></div><div class="m">Paid by ${r.meth}</div><div class="r noprint"><button class="p" onclick="window.print()">Print receipt</button><button onclick="receipt=null;draw()">Done</button></div></div>`}
  const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
  if(!tabs.includes(sel))sel=tabs[0]||null;
  let body='<p class="m">No open tables.</p>';
