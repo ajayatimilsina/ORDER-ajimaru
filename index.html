@@ -41,7 +41,7 @@ main{max-width:980px;margin:0 auto;padding:14px}
 @media print{.receipt-paper{width:72mm;max-width:72mm;box-sizing:border-box;margin:0 auto;padding:4mm;border:0;background:#fff;color:#000;font:12px/1.5 monospace}.receipt-meta{color:#000}.receipt-items{border-color:#888}.receipt-total{border-color:#000;font-size:18px}.receipt-thanks{margin-top:6mm}}
 </style></head><body>
 <nav><b>⚓ あじまるや & 中島駅</b>
-<button id="b-customer" onclick="go('customer')">Customer</button>
+<button id="b-customer" onclick="openCustomer()">Customer page</button>
 <button id="b-kitchen" onclick="go('kitchen')">Kitchen</button>
 <button id="b-register" onclick="go('register')">Register 会計</button>
 <button id="b-qr" onclick="go('qr')">QR Sheet</button></nav>
@@ -72,7 +72,7 @@ const menuGroups=()=>[
   ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
   ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')]
 ];
-let orders=[],view='customer',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,bc=null,guestType='All',adultCount=2,childCount=0,allergy='なし';
+let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,bc=null,guestType='All',adultCount=2,childCount=0,allergy='なし';
 try{bc=new BroadcastChannel('hh')}catch(e){}
 function load(){try{orders=JSON.parse(localStorage.getItem('hh_orders')||'[]')}catch(e){orders=[]}try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
 function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}if(bc)bc.postMessage(1)}
@@ -102,8 +102,9 @@ function draw(){
  if(view=='qr')document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));
 }
 const base=()=>location.href.split('#')[0];
+function openCustomer(){location.href=customerUrl(table)}
 const customerUrl=(tableNo)=>{
-  const url = new URL(base(), window.location.href);
+  const url = new URL('customer.html', window.location.href);
   url.hash = `#t=${tableNo}`;
   return url.toString();
 };
