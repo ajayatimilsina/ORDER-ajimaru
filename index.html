@@ -42,6 +42,7 @@ main{max-width:980px;margin:0 auto;padding:14px}
 </style></head><body>
 <nav><b>⚓ あじまるや & 中島駅</b>
 <button id="b-customer" onclick="openCustomer()">Customer page</button>
+<button id="b-menu" onclick="go('menu')">Menu</button>
 <button id="b-kitchen" onclick="go('kitchen')">Kitchen</button>
 <button id="b-register" onclick="go('register')">Register 会計</button>
 <button id="b-qr" onclick="go('qr')">QR Sheet</button>
@@ -50,7 +51,7 @@ main{max-width:980px;margin:0 auto;padding:14px}
 <script type="module" src="firebase-sync.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
-const MENU=[
+let MENU=[
  {id:1,cat:'定食',n:'唐揚げ定食',p:800,e:''},
  {id:2,cat:'定食',n:'あじまる唐揚げ定食',p:900,e:''},
  {id:3,cat:'定食',n:'とんかつ定食',p:880,e:''},
@@ -69,24 +70,34 @@ const otherDrinkTypes=[{id:1,n:'生'},{id:2,n:'ハイボール'},{id:3,n:'レモ
 const shochuOptions=['水割り','お湯割り','お茶割り','ソーダ割り'];
 const yen=n=>'¥'+Math.round(n).toLocaleString();
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const menuGroups=()=>[
-  ['定食', MENU.filter(m=>m.cat==='定食')],
-  ['ラーメン', MENU.filter(m=>m.cat==='ラーメン')],
-  ['ナンセット', MENU.filter(m=>m.cat==='ナンセット')],
-  ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
-  ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')],
-  ['居酒屋メニュー', MENU.filter(m=>m.cat==='居酒屋メニュー')],
-  ['飲み放題ドリンク', MENU.filter(m=>m.cat==='飲み放題ドリンク')]
-];
-let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,guestType='All',adultCount=2,childCount=0,allergy='なし',staffSignedIn=false,staffSyncReady=false,staffEmail='',syncError='';
+const menuGroups=()=>[...new Set(['定食','ラーメン','ナンセット','サブメニュー','ドリンク','居酒屋メニュー','飲み放題ドリンク',...MENU.map(m=>m.cat)])].filter(cat=>MENU.some(item=>item.cat===cat)).map(cat=>[cat,MENU.filter(item=>item.cat===cat)]);
+let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,guestType='All',adultCount=2,childCount=0,allergy='なし',staffSignedIn=false,staffSyncReady=false,staffEmail='',syncError='',menuDraft=[],menuDirty=false,menuSaving=false,menuMessage='';
 function load(){try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
 function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}}
 window.addEventListener('firebase-sync-ready',()=>{staffSyncReady=true;draw()},{once:true});
-window.addEventListener('firebase-auth-changed',event=>{staffSignedIn=event.detail.isStaff;staffEmail=event.detail.email;draw()});
+window.addEventListener('firebase-auth-changed',event=>{staffSignedIn=event.detail.isStaff;staffEmail=event.detail.email;if(staffSignedIn)window.firebaseSync.ensureMenu(MENU).catch(error=>{syncError=error.message});draw()});
 window.addEventListener('firebase-orders',event=>{orders=event.detail.orders;draw()});
+window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu)){MENU=event.detail.menu;if(!menuDirty)menuDraft=MENU.map(item=>({...item}))}draw()});
 window.addEventListener('firebase-sync-error',event=>{syncError=event.detail?.message||'Firebase connection failed.';draw()});
 function toggleStaffAuth(){if(!staffSyncReady)return;syncError='';const action=staffSignedIn?window.firebaseSync.signOut():window.firebaseSync.signInStaff();action.catch(error=>{syncError=error.message;draw()})}
 function staffGate(){return `<section class="c"><h2>Staff sign-in required</h2><p class="m">Kitchen and register data are available only to the authorized Google account.</p><button class="p" onclick="toggleStaffAuth()">Sign in with Google</button></section>`}
+function menuManager(){
+ if(!staffSignedIn)return staffGate();
+ if(!menuDraft.length)menuDraft=MENU.map(item=>({...item}));
+ return `<div class="r"><h2>Menu Manager</h2><div><button onclick="addMenuItem()">Add item</button> <button onclick="cancelMenuDraft()" ${menuDirty?'':'disabled'}>Cancel</button> <button class="p" onclick="saveMenuDraft()" ${menuDirty&&!menuSaving?'':'disabled'}>${menuSaving?'Saving…':'Save menu'}</button></div></div>${menuMessage?`<p class="m" role="status">${escapeHtml(menuMessage)}</p>`:''}<div class="g">${menuDraft.map((item,index)=>`<div class="c"><div class="r"><b>#${item.id}</b><button onclick="removeMenuItem(${index})">Remove</button></div><label style="display:block;margin:8px 0">Name <input value="${escapeHtml(item.n)}" onchange="editMenuItem(${index},'n',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Category <input value="${escapeHtml(item.cat)}" onchange="editMenuItem(${index},'cat',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Price (¥) <input type="number" min="0" step="1" value="${Number(item.p)||0}" onchange="editMenuItem(${index},'p',this.value)" style="width:100%;box-sizing:border-box"></label></div>`).join('')}</div>`;
+}
+function editMenuItem(index,field,value){menuDraft[index]={...menuDraft[index],[field]:value};menuDirty=true;menuMessage='';draw()}
+function addMenuItem(){const id=Math.max(0,...MENU.map(item=>Number(item.id)||0),...menuDraft.map(item=>Number(item.id)||0))+1;menuDraft.push({id,cat:'定食',n:'',p:0,e:''});menuDirty=true;menuMessage='';draw()}
+function removeMenuItem(index){menuDraft.splice(index,1);menuDirty=true;menuMessage='';draw()}
+function cancelMenuDraft(){menuDraft=MENU.map(item=>({...item}));menuDirty=false;menuMessage='';draw()}
+async function saveMenuDraft(){
+ const menu=menuDraft.map(item=>({...item,id:Number(item.id),n:String(item.n).trim(),cat:String(item.cat).trim(),p:Number(item.p),e:String(item.e||'')}));
+ if(menu.some(item=>!item.n||!item.cat||!Number.isFinite(item.p)||item.p<0)||new Set(menu.map(item=>item.id)).size!==menu.length){menuMessage='Enter a unique item, category, and non-negative price for every row.';draw();return}
+ menuSaving=true;menuMessage='';draw();
+ try{await window.firebaseSync.saveMenu(menu);MENU=menu;menuDraft=menu.map(item=>({...item}));menuDirty=false;menuMessage='Menu saved.'}
+ catch(error){menuMessage=error.message||'Could not save the menu.'}
+ menuSaving=false;draw();
+}
 function go(v){view=v;draw()}
 function renderQrCell(el, value){
   if(typeof qrcode === 'function'){
@@ -105,9 +116,9 @@ function renderQrCell(el, value){
   el.replaceChildren(img);
 }
 function draw(){
- ['customer','kitchen','register','qr'].forEach(v=>document.getElementById('b-'+v).className=v==view?'on':'');
+ ['customer','menu','kitchen','register','qr'].forEach(v=>document.getElementById('b-'+v).className=v==view?'on':'');
  const authButton=document.getElementById('b-auth');authButton.textContent=staffSignedIn?`Sign out ${staffEmail}`:staffSyncReady?'Staff sign in':'Connecting…';authButton.disabled=!staffSyncReady;
- document.getElementById('app').innerHTML=(syncError?`<p role="alert" class="m">${escapeHtml(syncError)}</p>`:'')+({customer,kitchen,register,qr})[view]();
+ document.getElementById('app').innerHTML=(syncError?`<p role="alert" class="m">${escapeHtml(syncError)}</p>`:'')+({customer,menu:menuManager,kitchen,register,qr})[view]();
  autoPrint();
  if(view=='qr')document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));
 }

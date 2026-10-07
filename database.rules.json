@@ -54,6 +54,28 @@
           ".validate": "newData.isString() && (newData.val() === auth.uid || auth.token.email === 'ajayatimilsina1@gmail.com')"
         }
       }
+    },
+    "menu": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email === 'ajayatimilsina1@gmail.com' && auth.token.firebase.sign_in_provider === 'google.com'",
+      "$menuId": {
+        ".validate": "newData.hasChildren(['id', 'cat', 'n', 'p', 'e'])",
+        "id": {
+          ".validate": "newData.isNumber()"
+        },
+        "cat": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+        },
+        "n": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+        },
+        "p": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000"
+        },
+        "e": {
+          ".validate": "newData.isString() && newData.val().length <= 16"
+        }
+      }
     }
   }
 }

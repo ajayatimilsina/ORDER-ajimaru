@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
-import { getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
+import { get, getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAk81HxCeRB3IGekGcsE9OVHmi1sFdLwYM',
@@ -30,6 +30,21 @@ function emit(name, detail) {
 
 function isStaff(user) {
   return Boolean(user && !user.isAnonymous && user.email?.toLowerCase() === STAFF_EMAIL);
+}
+
+function normalizeMenu(menu) {
+  const values = (Array.isArray(menu) ? menu : Object.values(menu || {})).filter(item => item && typeof item === 'object');
+  return values.map(item => ({
+    id: Number(item.id),
+    cat: String(item.cat || ''),
+    n: String(item.n || ''),
+    p: Number(item.p),
+    e: String(item.e || '')
+  })).sort((a, b) => a.id - b.id);
+}
+
+function menuRecord(menu) {
+  return Object.fromEntries(normalizeMenu(menu).map(item => [String(item.id), item]));
 }
 
 function customerOrderKeys() {
@@ -93,6 +108,22 @@ async function signInStaff() {
   return result.user;
 }
 
+async function ensureMenu(defaultMenu) {
+  if (!isStaff(auth.currentUser)) throw new Error('Staff sign-in required.');
+  const menuRef = ref(database, 'menu');
+  const snapshot = await get(menuRef);
+  if (!snapshot.exists()) await set(menuRef, menuRecord(defaultMenu));
+}
+
+async function saveMenu(menu) {
+  if (!isStaff(auth.currentUser)) throw new Error('Staff sign-in required.');
+  await set(ref(database, 'menu'), menuRecord(menu));
+}
+
+onValue(ref(database, 'menu'), snapshot => {
+  emit('firebase-menu', { menu: snapshot.exists() ? normalizeMenu(snapshot.val()) : null });
+}, error => emit('firebase-sync-error', { message: error.message }));
+
 function listenForStaffOrders(user) {
   if (!isStaff(user) || staffOrdersListener) return;
   const ordersRef = ref(database, 'orders');
@@ -132,6 +163,8 @@ onAuthStateChanged(auth, user => {
 
 window.firebaseSync = {
   createCustomerOrder,
+  ensureMenu,
+  saveMenu,
   signInStaff,
   signOut: () => signOut(auth),
   updateOrder: (key, patch) => update(ref(database, `orders/${key}`), patch),
