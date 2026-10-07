@@ -44,8 +44,10 @@ main{max-width:980px;margin:0 auto;padding:14px}
 <button id="b-customer" onclick="openCustomer()">Customer page</button>
 <button id="b-kitchen" onclick="go('kitchen')">Kitchen</button>
 <button id="b-register" onclick="go('register')">Register 会計</button>
-<button id="b-qr" onclick="go('qr')">QR Sheet</button></nav>
+<button id="b-qr" onclick="go('qr')">QR Sheet</button>
+<button id="b-auth" onclick="toggleStaffAuth()">Staff sign in</button></nav>
 <main id="app"></main><div id="ticket"></div>
+<script type="module" src="firebase-sync.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
 const MENU=[
@@ -72,12 +74,15 @@ const menuGroups=()=>[
   ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
   ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')]
 ];
-let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,bc=null,guestType='All',adultCount=2,childCount=0,allergy='なし';
-try{bc=new BroadcastChannel('hh')}catch(e){}
-function load(){try{orders=JSON.parse(localStorage.getItem('hh_orders')||'[]')}catch(e){orders=[]}try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
-function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}if(bc)bc.postMessage(1)}
-if(bc)bc.onmessage=()=>{load();draw()};
-addEventListener('storage',()=>{load();draw()});
+let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,guestType='All',adultCount=2,childCount=0,allergy='なし',staffSignedIn=false,staffSyncReady=false,staffEmail='',syncError='';
+function load(){try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
+function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}}
+window.addEventListener('firebase-sync-ready',()=>{staffSyncReady=true;draw()},{once:true});
+window.addEventListener('firebase-auth-changed',event=>{staffSignedIn=event.detail.isStaff;staffEmail=event.detail.email;draw()});
+window.addEventListener('firebase-orders',event=>{orders=event.detail.orders;draw()});
+window.addEventListener('firebase-sync-error',event=>{syncError=event.detail?.message||'Firebase connection failed.';draw()});
+function toggleStaffAuth(){if(!staffSyncReady)return;syncError='';const action=staffSignedIn?window.firebaseSync.signOut():window.firebaseSync.signInStaff();action.catch(error=>{syncError=error.message;draw()})}
+function staffGate(){return `<section class="c"><h2>Staff sign-in required</h2><p class="m">Kitchen and register data are available only to the authorized Google account.</p><button class="p" onclick="toggleStaffAuth()">Sign in with Google</button></section>`}
 function go(v){view=v;draw()}
 function renderQrCell(el, value){
   if(typeof qrcode === 'function'){
@@ -97,7 +102,8 @@ function renderQrCell(el, value){
 }
 function draw(){
  ['customer','kitchen','register','qr'].forEach(v=>document.getElementById('b-'+v).className=v==view?'on':'');
- document.getElementById('app').innerHTML=({customer,kitchen,register,qr})[view]();
+ const authButton=document.getElementById('b-auth');authButton.textContent=staffSignedIn?`Sign out ${staffEmail}`:staffSyncReady?'Staff sign in':'Connecting…';authButton.disabled=!staffSyncReady;
+ document.getElementById('app').innerHTML=(syncError?`<p role="alert" class="m">${escapeHtml(syncError)}</p>`:'')+({customer,kitchen,register,qr})[view]();
  autoPrint();
  if(view=='qr')document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));
 }
@@ -141,12 +147,14 @@ function printTicket(id){const o=orders.find(x=>x.id==id);if(!o)return;document.
 function autoPrint(){if(view!='kitchen'||!auto||document.body.classList.contains('tk'))return;let done=[];try{done=JSON.parse(localStorage.getItem('hh_printed')||'[]')}catch(e){}
  const n=orders.find(o=>o.status=='new'&&!o.paid&&!done.includes(o.id));if(!n)return;done.push(n.id);try{localStorage.setItem('hh_printed',JSON.stringify(done))}catch(e){}printTicket(n.id)}
 function kitchen(){
+ if(!staffSignedIn)return staffGate();
  const q=orders.filter(o=>o.status!='served'&&!o.paid);
  return `<div class="r"><h2>Kitchen Display</h2><label><input type="checkbox" ${auto?'checked':''} onchange="auto=this.checked;draw()"> Auto-print new orders</label></div>${q.length?'':'<p class="m">No open tickets.</p>'}<div class="g">${q.map(o=>{const cd=countdownInfo(o.t); return `<div class="c"><div class="r"><b>Table ${o.table} · #${o.id}</b><span class="tag ${o.status}">${o.status}</span><span class="${cd.tone}">${cd.label}</span></div><div class="m">大人 ${o.adultCount || 0} · 子ども ${o.childCount || 0} · ${o.guestType || 'All'} · アレルギー ${o.allergy || 'なし'}</div>${o.items.map(i=>`<div>${i.q}× ${i.n}</div>`).join('')}<div class="m">${new Date(o.t).toLocaleTimeString()} · 20:00 countdown</div><div class="r">${o.status=='new'?`<button class="p" onclick="setS(${o.id},'preparing')">Start cooking</button>`:`<button class="p" onclick="setS(${o.id},'served')">Mark ready / served</button>`}<button onclick="printTicket(${o.id})">Print</button></div></div>`}).join('')}</div>`}
-function setS(id,s){load();orders.find(o=>o.id==id).status=s;save();draw()}
+async function setS(id,s){const order=orders.find(o=>o.id==id);if(!order)return;try{await window.firebaseSync.updateOrder(order.key,{status:s})}catch(error){syncError=error.message;draw()}}
 // Register
 let disc=0,meth='QR pay',receiptHistory=[],showReceiptHistory=false;
 function register(){
+ if(!staffSignedIn)return staffGate();
  if(receipt){const r=receipt;return `<section class="receipt-paper"><div style="text-align:center;font-weight:700">あじまるや</div><div class="receipt-label">レシート</div><h2 class="receipt-title">領収書</h2><label class="noprint">宛名<input class="receipt-name-input" placeholder="宛名を入力" value="${escapeHtml(r.name||'')}" oninput="setReceiptName(this.value)"></label><div class="receipt-recipient"><span>お名前</span><span class="receipt-recipient-name" id="receipt-name-preview">${escapeHtml(r.name||'')}</span><span class="receipt-recipient-line"></span><span>様</span></div><div class="receipt-meta">発行日 ${new Date(r.t).toLocaleString()}<br>テーブル ${r.table}</div><div class="receipt-items">${r.items.map(i=>`<div class="r"><span>${i.n} × ${i.q}</span><span>${yen(i.p*i.q)}</span></div>`).join('')}</div><div class="r"><span>小計</span><span>${yen(r.sub)}</span></div>${r.disc?`<div class="r"><span>割引 (${r.disc}%)</span><span>−${yen(r.sub-r.tot)}</span></div>`:''}<div class="r receipt-total"><b>領収金額</b><b>${yen(r.tot)}</b></div><div class="r"><span>お支払い</span><span>${r.meth}</span></div><div class="receipt-thanks">上記正に領収いたしました</div><div class="r noprint"><button class="p" onclick="window.print()">印刷</button><button onclick="receipt=null;draw()">戻る</button></div></section>`}
  if(showReceiptHistory)return `<div class="r"><h2>領収書履歴</h2><button onclick="showReceiptHistory=false;draw()">戻る</button></div>${receiptHistory.length?receiptHistory.map((r,i)=>`<div class="c r"><span>Table ${r.table} · ${new Date(r.t).toLocaleString()} · ${yen(r.tot)} · ${r.meth}</span><button onclick="openReceipt(${i})">再表示</button></div>`).join(''):'<p class="m">領収書はまだありません。</p>'}`;
  const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
@@ -162,18 +170,12 @@ function register(){
 function setReceiptName(name){if(!receipt)return;receipt.name=name;const index=receiptHistory.indexOf(receipt);if(index>=0)try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}const preview=document.getElementById('receipt-name-preview');if(preview)preview.textContent=name}
 function openReceipt(index){receipt=receiptHistory[index];showReceiptHistory=false;draw()}
 function deleteOrder(id){
- load();
- orders = orders.filter(o => o.id !== id);
- save();
- if(sel && !orders.some(o => o.table === sel && !o.paid)) {
-   const tabs=[...new Set(orders.filter(o=>!o.paid).map(o=>o.table))].sort((a,b)=>a-b);
-   sel = tabs[0] || null;
- }
- draw();
+ const order=orders.find(o=>o.id===id);if(!order)return;
+ window.firebaseSync.deleteOrder(order.key).catch(error=>{syncError=error.message;draw()});
 }
-function closeT(){load();const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os.reduce((s,o)=>s+total(o),0);
- receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:Date.now()};receiptHistory.unshift(receipt);try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}
- os.forEach(o=>{o.paid=true;o.status='served';o.payment={meth,disc,at:Date.now()}});disc=0;save();draw()}
+async function closeT(){const os=orders.filter(o=>o.table==sel&&!o.paid),sub=os.reduce((s,o)=>s+total(o),0),at=Date.now();
+ try{await Promise.all(os.map(o=>window.firebaseSync.updateOrder(o.key,{paid:true,status:'served',payment:{meth,disc,at}})))}catch(error){syncError=error.message;draw();return}
+ receipt={table:sel,items:os.flatMap(o=>o.items),sub,disc,tot:sub*(1-disc/100),meth,t:at};receiptHistory.unshift(receipt);try{localStorage.setItem('hh_receipts',JSON.stringify(receiptHistory))}catch(e){}disc=0;draw()}
 // QR sheet
 let qbase='';
 function qr(){const b=qbase||base();return `<h2>Table QR Sheet (1–40)</h2><div class="c noprint" style="margin-bottom:10px"><div class="m">Page address customers will open (must be reachable from their phones)</div><input value="${b}" style="width:100%;box-sizing:border-box" onchange="qbase=this.value.trim();draw()">${/^file:/i.test(b)?'<p style="color:var(--warn)">⚠ file:// addresses only work on this PC. Host the page, then paste its public https address here.</p>':''}</div><p class="m noprint">Each QR code opens the Customer page for that table only. <button onclick="window.print()">Print</button></p><div class="g">${Array.from({length:40},(_,i)=>`<div class="c qr"><div data-q="${i+1}"></div><b>Table ${i+1}</b></div>`).join('')}</div>`}

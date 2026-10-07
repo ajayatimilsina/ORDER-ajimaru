@@ -1,0 +1,124 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
+import { getDatabase, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: 'AIzaSyAk81HxCeRB3IGekGcsE9OVHmi1sFdLwYM',
+  authDomain: 'ajimaru-bcbef.firebaseapp.com',
+  databaseURL: 'https://ajimaru-bcbef-default-rtdb.firebaseio.com',
+  projectId: 'ajimaru-bcbef',
+  storageBucket: 'ajimaru-bcbef.firebasestorage.app',
+  messagingSenderId: '893250502168',
+  appId: '1:893250502168:web:76740b65a9ca60953fcd6d',
+  measurementId: 'G-H39ZKMVY25'
+};
+
+const STAFF_EMAIL = 'ajayatimilsina1@gmail.com';
+const CUSTOMER_ORDER_KEYS = 'hh_customer_order_keys';
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const database = getDatabase(app);
+const ownOrders = new Map();
+const customerListeners = new Set();
+const watchedOrders = new Map();
+let staffOrdersListener = null;
+
+function emit(name, detail) {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+function isStaff(user) {
+  return Boolean(user && !user.isAnonymous && user.email?.toLowerCase() === STAFF_EMAIL);
+}
+
+function customerOrderKeys() {
+  try {
+    const keys = JSON.parse(localStorage.getItem(CUSTOMER_ORDER_KEYS) || '[]');
+    return Array.isArray(keys) ? keys.filter(key => typeof key === 'string') : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function publishCustomerOrders() {
+  const orders = [...ownOrders.values()].sort((a, b) => a.t - b.t);
+  customerListeners.forEach(listener => listener(orders));
+}
+
+function watchCustomerOrder(key, uid) {
+  if (watchedOrders.has(key)) return;
+  const unsubscribe = onValue(ref(database, `orders/${key}`), snapshot => {
+    const order = snapshot.val();
+    if (order && order.customerUid === uid) ownOrders.set(key, { ...order, key });
+    else ownOrders.delete(key);
+    publishCustomerOrders();
+  }, error => emit('firebase-sync-error', { message: error.message }));
+  watchedOrders.set(key, unsubscribe);
+}
+
+async function ensureCustomer() {
+  if (!auth.currentUser) await signInAnonymously(auth);
+  return auth.currentUser;
+}
+
+async function startCustomer(onOrders) {
+  customerListeners.add(onOrders);
+  const user = await ensureCustomer();
+  customerOrderKeys().forEach(key => watchCustomerOrder(key, user.uid));
+  publishCustomerOrders();
+  return () => customerListeners.delete(onOrders);
+}
+
+async function createCustomerOrder(order) {
+  const user = await ensureCustomer();
+  const orderRef = push(ref(database, 'orders'));
+  const record = { ...order, customerUid: user.uid };
+  await set(orderRef, record);
+  const keys = customerOrderKeys();
+  if (!keys.includes(orderRef.key)) {
+    keys.push(orderRef.key);
+    localStorage.setItem(CUSTOMER_ORDER_KEYS, JSON.stringify(keys));
+  }
+  watchCustomerOrder(orderRef.key, user.uid);
+  return { ...record, key: orderRef.key };
+}
+
+async function signInStaff() {
+  const result = await signInWithPopup(auth, new GoogleAuthProvider());
+  if (!isStaff(result.user)) {
+    await signOut(auth);
+    throw new Error(`Staff access is limited to ${STAFF_EMAIL}.`);
+  }
+  return result.user;
+}
+
+function listenForStaffOrders(user) {
+  if (!isStaff(user) || staffOrdersListener) return;
+  staffOrdersListener = onValue(ref(database, 'orders'), snapshot => {
+    const orders = [];
+    snapshot.forEach(child => orders.push({ ...child.val(), key: child.key }));
+    orders.sort((a, b) => a.t - b.t);
+    emit('firebase-orders', { orders });
+  }, error => emit('firebase-sync-error', { message: error.message }));
+}
+
+onAuthStateChanged(auth, user => {
+  const staff = isStaff(user);
+  if (staff) listenForStaffOrders(user);
+  else if (staffOrdersListener) {
+    staffOrdersListener();
+    staffOrdersListener = null;
+  }
+  emit('firebase-auth-changed', { isStaff: staff, email: staff ? user.email : '' });
+});
+
+window.firebaseSync = {
+  createCustomerOrder,
+  signInStaff,
+  signOut: () => signOut(auth),
+  updateOrder: (key, patch) => update(ref(database, `orders/${key}`), patch),
+  deleteOrder: key => remove(ref(database, `orders/${key}`)),
+  startCustomer
+};
+
+emit('firebase-sync-ready', {});
