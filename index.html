@@ -57,13 +57,13 @@ const MENU=[
  {id:4,cat:'定食',n:'みそとんかつ定食',p:900,e:''},
  {id:5,cat:'定食',n:'アジフライ定食',p:850,e:''},
  {id:6,cat:'定食',n:'ミックスフライ定食',p:920,e:''},
- {id:7,cat:'定食',n:'プレーンナンセット',p:770,e:''},
+ {id:7,cat:'ナンセット',n:'プレーンナンセット',p:770,e:''},
  {id:8,cat:'サブメニュー',n:'ご飯 小',p:150,e:'🍚'},
  {id:9,cat:'サブメニュー',n:'ご飯 中',p:200,e:'🍚'},
  {id:10,cat:'サブメニュー',n:'ご飯 大',p:250,e:'🍚'},
  {id:15,cat:'サブメニュー',n:'その他',p:100,e:''},
  {id:14,cat:'ドリンク',n:'生ビール',p:500,e:'🍺'},
- {id:16,cat:'ドリンク',n:'その他（飲み物）',p:0,e:'🥤'}
+ {id:16,cat:'飲み放題ドリンク',n:'その他（飲み物）',p:0,e:'🥤'}
 ];
 const otherDrinkTypes=[{id:1,n:'生'},{id:2,n:'ハイボール'},{id:3,n:'レモンサワー'},{id:4,n:'お茶'},{id:5,n:'麦焼酎'},{id:6,n:'芋焼酎'}];
 const shochuOptions=['水割り','お湯割り','お茶割り','ソーダ割り'];
@@ -71,8 +71,12 @@ const yen=n=>'¥'+Math.round(n).toLocaleString();
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const menuGroups=()=>[
   ['定食', MENU.filter(m=>m.cat==='定食')],
+  ['ラーメン', MENU.filter(m=>m.cat==='ラーメン')],
+  ['ナンセット', MENU.filter(m=>m.cat==='ナンセット')],
   ['サブメニュー', MENU.filter(m=>m.cat==='サブメニュー')],
-  ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')]
+  ['ドリンク', MENU.filter(m=>m.cat==='ドリンク')],
+  ['居酒屋メニュー', MENU.filter(m=>m.cat==='居酒屋メニュー')],
+  ['飲み放題ドリンク', MENU.filter(m=>m.cat==='飲み放題ドリンク')]
 ];
 let orders=[],view='register',table=1,cart={},riceLarge={},naanSpice='',otherPreset='',otherName='',otherPrice=100,otherDrinkType=0,otherDrinkOption='',otherDrinkPrice=0,sel=null,receipt=null,guestType='All',adultCount=2,childCount=0,allergy='なし',staffSignedIn=false,staffSyncReady=false,staffEmail='',syncError='';
 function load(){try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts')||'[]')}catch(e){receiptHistory=[]}}
