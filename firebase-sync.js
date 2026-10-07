@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
-import { getDatabase, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
+import { getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAk81HxCeRB3IGekGcsE9OVHmi1sFdLwYM',
@@ -21,6 +21,7 @@ const database = getDatabase(app);
 const ownOrders = new Map();
 const customerListeners = new Set();
 const watchedOrders = new Map();
+const staffOrders = new Map();
 let staffOrdersListener = null;
 
 function emit(name, detail) {
@@ -94,12 +95,29 @@ async function signInStaff() {
 
 function listenForStaffOrders(user) {
   if (!isStaff(user) || staffOrdersListener) return;
-  staffOrdersListener = onValue(ref(database, 'orders'), snapshot => {
-    const orders = [];
-    snapshot.forEach(child => orders.push({ ...child.val(), key: child.key }));
-    orders.sort((a, b) => a.t - b.t);
-    emit('firebase-orders', { orders });
-  }, error => emit('firebase-sync-error', { message: error.message }));
+  const ordersRef = ref(database, 'orders');
+  const publish = () => emit('firebase-orders', {
+    orders: [...staffOrders.values()].sort((a, b) => a.t - b.t)
+  });
+  const handleError = error => emit('firebase-sync-error', { message: error.message });
+  const stopAdded = onChildAdded(ordersRef, snapshot => {
+    staffOrders.set(snapshot.key, { ...snapshot.val(), key: snapshot.key });
+    publish();
+  }, handleError);
+  const stopChanged = onChildChanged(ordersRef, snapshot => {
+    staffOrders.set(snapshot.key, { ...snapshot.val(), key: snapshot.key });
+    publish();
+  }, handleError);
+  const stopRemoved = onChildRemoved(ordersRef, snapshot => {
+    staffOrders.delete(snapshot.key);
+    publish();
+  }, handleError);
+  staffOrdersListener = () => {
+    stopAdded();
+    stopChanged();
+    stopRemoved();
+    staffOrders.clear();
+  };
 }
 
 onAuthStateChanged(auth, user => {
