@@ -31,7 +31,7 @@ label{display:block;margin:8px 0;line-height:1.4}.form input{width:100%}
 <script src="hours.js"></script>
 <script type="module" src="firebase-sync.js"></script>
 <script>
-let MENU=[],settings={},orders=[],cart={},riceLarge={},naanSpice='',allergy='なし',allergyNote='',needReceipt=false,optSel={},user={signedIn:false},pending=false,message='',lastOpen=null;
+let MENU=[],settings={},orders=[],cart={},riceLarge={},naanSpice='',allergy='なし',allergyNote='',needReceipt=false,optSel={},pending=false,message='',lastOpen=null;
 const profile={name:'',phone:'',postal:'',address:'',landmark:''};
 try{Object.assign(profile,JSON.parse(localStorage.getItem('hh_delivery_profile')||'{}'))}catch(e){}
 const yen=n=>'¥'+Math.round(n).toLocaleString();
@@ -45,7 +45,6 @@ const groups=()=>[...new Set(['定食','ラーメン','ナンセット','サブ�
 const statusLabel={new:'受付済み',preparing:'調理中',delivering:'配達中',served:'配達完了'};
 const deliveryOpen=()=>openState(settings.delivery).open;
 function blockReason(count){
- if(!user.signedIn)return 'ログインしてください。';
  const st=openState(settings.delivery);
  if(st.manual)return '現在、配達の受付を停止しています。';
  if(!st.open)return '配達の受付時間外です。';
@@ -68,22 +67,18 @@ function field(key,label,type,ph){return `<label>${label}<input type="${type||'t
 function draw(){
  const items=buildItems(),count=items.reduce((s,i)=>s+i.q,0),total=items.reduce((s,i)=>s+i.p*i.q,0);
  const mine=orders.filter(o=>o.type==='delivery'&&Date.now()-o.t<864e5).sort((a,b)=>b.t-a.t);
- const login=user.signedIn
-  ?`<div class="panel row"><span>ログイン中：<b>${esc(user.displayName||user.userEmail)}</b></span><button onclick="firebaseSync.signOut()">ログアウト</button></div>
-    <div class="panel form" style="margin-top:10px"><b>お届け先</b>${field('name','お名前','text')}${field('phone','電話番号','tel','090-1234-5678')}${field('postal','郵便番号','text','123-4567')}${field('address','住所','text','都道府県・市区町村・番地・建物名')}${field('landmark','近くのスーパー／コンビニ','text','例：セブンイレブン○○店')}
-    <label>アレルギー<select onchange="allergy=this.value;draw()">${['なし','あり'].map(v=>`<option ${allergy===v?'selected':''}>${v}</option>`).join('')}</select></label>${allergy==='あり'?`<label>アレルギー内容<input maxlength="200" value="${esc(allergyNote)}" oninput="allergyNote=this.value"></label>`:''}<label><input type="checkbox" style="width:auto" ${needReceipt?'checked':''} onchange="needReceipt=this.checked"> 領収書が必要</label></div>`
-  :`<div class="panel"><b>ご注文にはログインが必要です</b><p class="muted">Googleアカウントでログインしてください。</p><button class="primary" onclick="login()">Googleでログイン</button></div>`;
- document.getElementById('app').innerHTML=`${message?`<p role="alert" class="muted">${esc(message)}</p>`:''}${login}
+ const login=`<div class="panel form"><b>お届け先</b>${field('name','お名前','text')}${field('phone','電話番号','tel','090-1234-5678')}${field('postal','郵便番号','text','123-4567')}${field('address','住所','text','都道府県・市区町村・番地・建物名')}${field('landmark','近くのスーパー／コンビニ','text','例：セブンイレブン○○店')}
+    <label>アレルギー<select onchange="allergy=this.value;draw()">${['なし','あり'].map(v=>`<option ${allergy===v?'selected':''}>${v}</option>`).join('')}</select></label>${allergy==='あり'?`<label>アレルギー内容<input maxlength="200" value="${esc(allergyNote)}" oninput="allergyNote=this.value"></label>`:''}<label><input type="checkbox" style="width:auto" ${needReceipt?'checked':''} onchange="needReceipt=this.checked"> 領収書が必要</label></div>`;
+ document.getElementById('app').innerHTML=`${login}
  ${mine.length?`<section class="section panel"><b>配達状況（リアルタイム）</b>${mine.map(o=>`<div class="order"><div><b>注文 #${o.id}</b><div class="muted">${o.items.map(i=>`${esc(i.n)} × ${i.q}`).join(', ')}</div><div class="muted">${new Date(o.t).toLocaleTimeString()} · ${yen(o.items.reduce((s,i)=>s+i.p*i.q,0))}</div>${o.status!=='served'?`<div class="eta" data-t="${o.t}"></div>`:''}</div><span class="tag ${o.status}">${statusLabel[o.status]||o.status}</span></div>`).join('')}</section>`:''}
  <p class="muted">配達メニューは店内価格より ${markup()}% 高くなります。お支払いは配達時です。</p>
  ${MENU.length?'':'<p class="muted">メニューを読み込み中…</p>'}
  ${groups().length?`<div class="cats">${groups().map(([cat],gi)=>`<button onclick="document.getElementById('cat-${gi}').scrollIntoView({behavior:'smooth'})">${esc(cat)}</button>`).join('')}</div>`:''}
  ${groups().map(([cat,list],gi)=>`<section class="section" id="cat-${gi}"><h2 style="font-size:17px;margin:0 0 8px">${esc(cat)}</h2><div class="grid">${list.map(m=>`<article class="item"><h3>${esc(m.n)}</h3><div class="price">${yen(dp(m.p))}</div>${m.cat==='定食'?`<label>ご飯大盛り<select onchange="riceLarge[${m.id}]=Number(this.value);draw()"><option value="0" ${!riceLarge[m.id]?'selected':''}>普通</option>${Array.from({length:cart[m.id]||0},(_,i)=>i+1).map(q=>`<option value="${q}" ${riceLarge[m.id]===q?'selected':''}>${q}個を大盛り</option>`).join('')}</select> +${yen(dp(m.p+100)-dp(m.p))} / 個</label>`:''}${m.id===7?`<label>辛さ<select onchange="naanSpice=this.value;draw()"><option value="" ${naanSpice===''?'selected':''}>選択</option>${[0,1,2].map(l=>`<option value="${l}" ${naanSpice==l?'selected':''}>${l}</option>`).join('')}</select></label>`:''}${(m.opts||[]).length&&!m.out?`<label>OPTION<select onchange="optSel[${m.id}]=this.value;draw()"><option value="">なし</option>${m.opts.map((o,i)=>`<option value="${i}" ${String(optSel[m.id])===String(i)?'selected':''}>${esc(o.n)}${o.p?` +${yen(dp(m.p+o.p)-dp(m.p))}`:''}</option>`).join('')}</select></label>`:''}${m.out?'<div class="muted"><b>欠品</b></div>':`<div class="qty"><button onclick="qty(${m.id},-1)">−</button><b>${cart[m.id]||0}</b><button onclick="qty(${m.id},1)">+</button></div>`}</article>`).join('')}</div></section>`).join('')}
- <div class="summary row"><div><b>${count}点 · ${yen(total)}</b><div class="muted">${blockReason(count)}</div></div><button class="primary" ${blockReason(count)||pending?'disabled':''} onclick="sendOrder()">${pending?'送信中…':'配達を注文する'}</button></div>`;
+ <div class="summary row"><div><b>${count}点 · ${yen(total)}</b><div class="muted">${blockReason(count)}</div>${message?`<div role="alert" style="color:var(--warn);font-weight:700">${esc(message)}</div>`:''}</div><button class="primary" ${blockReason(count)||pending?'disabled':''} onclick="sendOrder()">${pending?'送信中…':'配達を注文する'}</button></div>`;
  tick();
 }
 function qty(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);riceLarge[id]=Math.min(riceLarge[id]||0,cart[id]);draw()}
-function login(){message='';window.firebaseSync.signInCustomer().catch(error=>{message=`ログインできません (${error.code||error.message})`;draw()})}
 async function sendOrder(){
  const items=buildItems();if(!items.length)return;
  if(!deliveryOpen()){message='現在、配達の受付時間外です。';draw();return}
@@ -105,7 +100,7 @@ function tick(){
  return st.open;
 }
 const onOrders=list=>{orders=list;draw()};
-window.addEventListener('firebase-auth-changed',event=>{user=event.detail;if(user.signedIn)window.firebaseSync.startCustomer(onOrders).catch(()=>{message='注文システムに接続できません。';draw()});else orders=[];draw()});
+window.addEventListener('firebase-sync-ready',()=>window.firebaseSync.startCustomer(onOrders).catch(()=>{message='注文システムに接続できません。';draw()}),{once:true});
 window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu))MENU=event.detail.menu;draw()});
 window.addEventListener('firebase-settings',event=>{settings=event.detail.settings||{};draw()});
 window.addEventListener('firebase-sync-error',event=>{message=event.detail?.message||'データベースに接続できません。';draw()});

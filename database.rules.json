@@ -7,7 +7,7 @@
       "$orderId": {
         ".read": "auth != null && ((auth.token.email === 'ajayatimilsina1@gmail.com' && auth.token.firebase.sign_in_provider === 'google.com') || data.child('customerUid').val() === auth.uid)",
         ".write": "auth != null && ((auth.token.email === 'ajayatimilsina1@gmail.com' && auth.token.firebase.sign_in_provider === 'google.com') || ((auth.token.firebase.sign_in_provider === 'anonymous' || auth.token.firebase.sign_in_provider === 'google.com') && !data.exists() && newData.child('customerUid').val() === auth.uid && newData.child('status').val() === 'new' && newData.child('paid').val() === false))",
-        ".validate": "newData.hasChildren(['id', 'table', 'items', 'status', 'paid', 'guestType', 'adultCount', 'childCount', 'allergy', 't', 'customerUid']) && (newData.child('type').val() !== 'delivery' || (newData.child('customer').hasChildren(['name', 'phone', 'postal', 'address', 'landmark']) && (data.exists() || (auth.token.firebase.sign_in_provider === 'google.com' && root.child('settings/delivery/closed').val() !== true))))",
+        ".validate": "newData.hasChildren(['id', 'table', 'items', 'status', 'paid', 'guestType', 'adultCount', 'childCount', 'allergy', 't', 'customerUid']) && (newData.child('type').val() !== 'delivery' || (newData.child('customer').hasChildren(['name', 'phone', 'postal', 'address', 'landmark']) && (data.exists() || root.child('settings/delivery/closed').val() !== true)))",
         "type": {
           ".validate": "newData.val() === 'delivery'"
         },
