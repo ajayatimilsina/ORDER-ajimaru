@@ -93,7 +93,7 @@ async function sendOrder(){
   const customer=Object.fromEntries(Object.entries(profile).map(([k,v])=>[k,v.trim()]));
   await window.firebaseSync.createCustomerOrder({id:Date.now(),table:0,type:'delivery',customer,items,status:'new',paid:false,guestType:'All',adultCount:1,childCount:0,allergy,allergyNote:allergy==='あり'?allergyNote.trim():'',receipt:needReceipt,t:Date.now()});
   cart={};riceLarge={};naanSpice='';message='ご注文を受け付けました。';
- }catch(e){message='注文を送信できませんでした。受付状況と通信状態を確認してください。'}
+ }catch(e){message=`注文を送信できませんでした (${e.code||e.message})`}
  pending=false;draw();
 }
 function tick(){
