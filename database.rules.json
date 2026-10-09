@@ -57,6 +57,12 @@
         "allergy": {
           ".validate": "newData.val() === 'なし' || newData.val() === 'あり'"
         },
+        "allergyNote": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "receipt": {
+          ".validate": "newData.isBoolean()"
+        },
         "t": {
           ".validate": "newData.isNumber() && newData.val() <= now"
         },
