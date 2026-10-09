@@ -1,5 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signInWithRedirect, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
 import { get, getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
 
 const firebaseConfig = {
@@ -126,8 +126,16 @@ async function saveSettings(settings) {
 }
 
 async function signInCustomer() {
-  const result = await signInWithPopup(auth, new GoogleAuthProvider());
-  return result.user;
+  const provider = new GoogleAuthProvider();
+  try {
+    return (await signInWithPopup(auth, provider)).user;
+  } catch (error) {
+    if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(error.code)) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    throw error;
+  }
 }
 
 onValue(ref(database, 'settings'), snapshot => {

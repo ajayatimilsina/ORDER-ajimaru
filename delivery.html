@@ -71,7 +71,7 @@ function draw(){
  tick();
 }
 function qty(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);riceLarge[id]=Math.min(riceLarge[id]||0,cart[id]);draw()}
-function login(){message='';window.firebaseSync.signInCustomer().catch(error=>{message=error.message;draw()})}
+function login(){message='';window.firebaseSync.signInCustomer().catch(error=>{message=`ログインできません (${error.code||error.message})`;draw()})}
 async function sendOrder(){
  const items=buildItems();if(!items.length)return;
  if(!deliveryOpen()){message='現在、配達の受付時間外です。';draw();return}
