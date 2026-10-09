@@ -41,6 +41,14 @@ const shown=()=>MENU.filter(item=>item.id!==15&&item.id!==16);
 const groups=()=>[...new Set(['定食','ラーメン','ナンセット','サブメニュー','ドリンク','居酒屋メニュー',...shown().map(i=>i.cat)])].filter(c=>shown().some(i=>i.cat===c)).map(c=>[c,shown().filter(i=>i.cat===c)]);
 const statusLabel={new:'受付済み',preparing:'調理中',delivering:'配達中',served:'配達完了'};
 const deliveryOpen=()=>openState(settings.delivery).open;
+function blockReason(count){
+ if(!user.signedIn)return 'ログインしてください。';
+ const st=openState(settings.delivery);
+ if(st.manual)return '現在、配達の受付を停止しています。';
+ if(!st.open)return '配達の受付時間外です。';
+ if(!count)return '商品を選んでください。';
+ return '';
+}
 function buildItems(){return shown().filter(m=>cart[m.id]).flatMap(m=>{
  const large=m.cat==='定食'?Math.min(riceLarge[m.id]||0,cart[m.id]):0,normal=cart[m.id]-large,spice=m.id===7&&naanSpice!==''?`（辛さ ${naanSpice}）`:'';
  return [normal?{n:m.n+spice,p:dp(m.p),q:normal}:null,large?{n:m.n+'（ご飯大）'+spice,p:dp(m.p+100),q:large}:null].filter(Boolean)})}
@@ -67,7 +75,7 @@ function draw(){
  <p class="muted">配達メニューは店内価格より ${markup()}% 高くなります。お支払いは配達時です。</p>
  ${MENU.length?'':'<p class="muted">メニューを読み込み中…</p>'}
  ${groups().map(([cat,list])=>`<section class="section"><h2 style="font-size:17px;margin:0 0 8px">${esc(cat)}</h2><div class="grid">${list.map(m=>`<article class="item"><h3>${esc(m.n)}</h3><div class="price">${yen(dp(m.p))}</div>${m.cat==='定食'?`<label>ご飯大盛り<select onchange="riceLarge[${m.id}]=Number(this.value);draw()"><option value="0" ${!riceLarge[m.id]?'selected':''}>普通</option>${Array.from({length:cart[m.id]||0},(_,i)=>i+1).map(q=>`<option value="${q}" ${riceLarge[m.id]===q?'selected':''}>${q}個を大盛り</option>`).join('')}</select> +${yen(dp(m.p+100)-dp(m.p))} / 個</label>`:''}${m.id===7?`<label>辛さ<select onchange="naanSpice=this.value;draw()"><option value="" ${naanSpice===''?'selected':''}>選択</option>${[0,1,2].map(l=>`<option value="${l}" ${naanSpice==l?'selected':''}>${l}</option>`).join('')}</select></label>`:''}<div class="qty"><button onclick="qty(${m.id},-1)">−</button><b>${cart[m.id]||0}</b><button onclick="qty(${m.id},1)">+</button></div></article>`).join('')}</div></section>`).join('')}
- <div class="summary row"><b>${count}点 · ${yen(total)}</b><button class="primary" ${count&&user.signedIn&&deliveryOpen()&&!pending?'':'disabled'} onclick="sendOrder()">${pending?'送信中…':'配達を注文する'}</button></div>`;
+ <div class="summary row"><div><b>${count}点 · ${yen(total)}</b><div class="muted">${blockReason(count)}</div></div><button class="primary" ${blockReason(count)||pending?'disabled':''} onclick="sendOrder()">${pending?'送信中…':'配達を注文する'}</button></div>`;
  tick();
 }
 function qty(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);riceLarge[id]=Math.min(riceLarge[id]||0,cart[id]);draw()}
