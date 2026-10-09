@@ -38,8 +38,8 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const markup=()=>{const v=Number(settings.delivery?.markup);return Number.isFinite(v)?v:30};
 const dp=p=>Math.round(p*(1+markup()/100));
 const optOf=item=>(item.opts||[])[optSel[item.id]];
-const noDelivery=['ドリンク','飲み放題ドリンク'];
-const shown=()=>MENU.filter(item=>item.id!==15&&item.id!==16&&!noDelivery.includes(item.cat));
+const isDrink=item=>/ドリンク|drink|飲/i.test(item.cat);
+const shown=()=>MENU.filter(item=>item.id!==15&&item.id!==16&&!isDrink(item));
 const groups=()=>[...new Set(['定食','ラーメン','ナンセット','サブメニュー','ドリンク','居酒屋メニュー',...shown().map(i=>i.cat)])].filter(c=>shown().some(i=>i.cat===c)).map(c=>[c,shown().filter(i=>i.cat===c)]);
 const statusLabel={new:'受付済み',preparing:'調理中',delivering:'配達中',served:'配達完了'};
 const deliveryOpen=()=>openState(settings.delivery).open;
