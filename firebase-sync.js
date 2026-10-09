@@ -39,7 +39,11 @@ function normalizeMenu(menu) {
     cat: String(item.cat || ''),
     n: String(item.n || ''),
     p: Number(item.p),
-    e: String(item.e || '')
+    e: String(item.e || ''),
+    out: item.out === true,
+    opts: (Array.isArray(item.opts) ? item.opts : Object.values(item.opts || {}))
+      .filter(opt => opt && String(opt.n || '').trim())
+      .map(opt => ({ n: String(opt.n), p: Number(opt.p) || 0 }))
   })).sort((a, b) => a.id - b.id);
 }
 

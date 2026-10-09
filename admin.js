@@ -22,25 +22,35 @@ function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}cat
 window.addEventListener('firebase-sync-ready',()=>{staffSyncReady=true;draw()},{once:true});
 window.addEventListener('firebase-auth-changed',event=>{staffSignedIn=event.detail.isStaff;staffEmail=event.detail.email;if(staffSignedIn)window.firebaseSync.ensureMenu(MENU).catch(error=>{syncError=error.message});draw()});
 window.addEventListener('firebase-orders',event=>{orders=event.detail.orders;draw()});
-window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu)){MENU=event.detail.menu;if(!menuDirty)menuDraft=MENU.map(item=>({...item}))}draw()});
+window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu)){MENU=event.detail.menu;if(!menuDirty)menuDraft=cloneMenu(MENU)}draw()});
 window.addEventListener('firebase-sync-error',event=>{syncError=event.detail?.message||'Firebase connection failed.';draw()});
 window.addEventListener('firebase-settings',event=>{settings=event.detail.settings||{};draw()});
 function toggleStaffAuth(){if(!staffSyncReady)return;syncError='';const action=staffSignedIn?window.firebaseSync.signOut():window.firebaseSync.signInStaff();action.catch(error=>{syncError=error.message;draw()})}
 function staffGate(){return `<section class="c"><h2>Staff sign-in required</h2><p class="m">Kitchen and register data are available only to the authorized Google account.</p><button class="p" onclick="toggleStaffAuth()">Sign in with Google</button></section>`}
+const cloneMenu=menu=>menu.map(item=>({...item,opts:(item.opts||[]).map(o=>({...o}))}));
+const menuCats=()=>[...new Set(menuDraft.map(item=>item.cat))];
 function menuManager(){
  if(!staffSignedIn)return staffGate();
- if(!menuDraft.length)menuDraft=MENU.map(item=>({...item}));
- return `<div class="r"><h2>Menu Manager</h2><div><button onclick="addMenuItem()">Add item</button> <button id="menu-cancel" onclick="cancelMenuDraft()" ${menuDirty?'':'disabled'}>Cancel</button> <button id="menu-save" class="p" onclick="saveMenuDraft()" ${menuDirty&&!menuSaving?'':'disabled'}>${menuSaving?'Saving…':'Save menu'}</button></div></div>${menuMessage?`<p class="m" role="status">${escapeHtml(menuMessage)}</p>`:''}<div class="g">${menuDraft.map((item,index)=>`<div class="c"><div class="r"><b>#${item.id}</b><button onclick="removeMenuItem(${index})">Remove</button></div><label style="display:block;margin:8px 0">Name <input value="${escapeHtml(item.n)}" oninput="editMenuItem(${index},'n',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Category <input value="${escapeHtml(item.cat)}" oninput="editMenuItem(${index},'cat',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Price (¥) <input type="number" min="0" step="1" value="${Number(item.p)||0}" oninput="editMenuItem(${index},'p',this.value)" style="width:100%;box-sizing:border-box"></label></div>`).join('')}</div>`;
+ if(!menuDraft.length)menuDraft=cloneMenu(MENU);
+ const bulk=menuCats().map((cat,ci)=>{const list=menuDraft.filter(item=>item.cat===cat),out=list.filter(item=>item.out).length;return `<div class="r"><span><b>${escapeHtml(cat)}</b> <span class="m">欠品 ${out}/${list.length}</span></span><span><button onclick="bulkOut(${ci},true)">まとめて欠品</button> <button onclick="bulkOut(${ci},false)">まとめて販売再開</button></span></div>`}).join('');
+ const card=(item,index)=>`<div class="c" style="${item.out?'opacity:.65':''}"><div class="r"><b>#${item.id}</b><label><input type="checkbox" ${item.out?'checked':''} onchange="setOut(${index},this.checked)"> 欠品</label><button onclick="removeMenuItem(${index})">Remove</button></div><label style="display:block;margin:8px 0">Name <input value="${escapeHtml(item.n)}" oninput="editMenuItem(${index},'n',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Category <input value="${escapeHtml(item.cat)}" oninput="editMenuItem(${index},'cat',this.value)" style="width:100%;box-sizing:border-box"></label><label style="display:block;margin:8px 0">Price (¥) <input type="number" min="0" step="1" value="${Number(item.p)||0}" oninput="editMenuItem(${index},'p',this.value)" style="width:100%;box-sizing:border-box"></label><div class="m">OPTION（名前 / 追加料金）</div>${(item.opts||[]).map((o,oi)=>`<div class="r"><input value="${escapeHtml(o.n)}" placeholder="名前" oninput="editOpt(${index},${oi},'n',this.value)" style="flex:1;min-width:0"><input type="number" min="0" step="1" value="${Number(o.p)||0}" oninput="editOpt(${index},${oi},'p',this.value)" style="width:80px"><button onclick="removeOpt(${index},${oi})">×</button></div>`).join('')}<button onclick="addOpt(${index})">+ OPTION</button></div>`;
+ return `<div class="r"><h2>Menu Manager</h2><div><button onclick="addMenuItem()">Add item</button> <button id="menu-cancel" onclick="cancelMenuDraft()" ${menuDirty?'':'disabled'}>Cancel</button> <button id="menu-save" class="p" onclick="saveMenuDraft()" ${menuDirty&&!menuSaving?'':'disabled'}>${menuSaving?'Saving…':'Save menu'}</button></div></div>${menuMessage?`<p class="m" role="status">${escapeHtml(menuMessage)}</p>`:''}<div class="c" style="margin-bottom:10px"><b>カテゴリ別 欠品</b>${bulk}</div><div class="g">${menuDraft.map(card).join('')}</div>`;
 }
-function editMenuItem(index,field,value){menuDraft[index]={...menuDraft[index],[field]:value};menuDirty=true;menuMessage='';const save=document.getElementById('menu-save'),cancel=document.getElementById('menu-cancel');if(save)save.disabled=menuSaving;if(cancel)cancel.disabled=false}
-function addMenuItem(){const id=Math.max(0,...MENU.map(item=>Number(item.id)||0),...menuDraft.map(item=>Number(item.id)||0))+1;menuDraft.push({id,cat:'定食',n:'',p:0,e:''});menuDirty=true;menuMessage='';draw()}
+function markDirty(){menuDirty=true;menuMessage='';const save=document.getElementById('menu-save'),cancel=document.getElementById('menu-cancel');if(save)save.disabled=menuSaving;if(cancel)cancel.disabled=false}
+function editMenuItem(index,field,value){menuDraft[index]={...menuDraft[index],[field]:value};markDirty()}
+function editOpt(index,oi,field,value){menuDraft[index].opts[oi][field]=value;markDirty()}
+function addOpt(index){menuDraft[index].opts=[...(menuDraft[index].opts||[]),{n:'',p:0}];markDirty();draw()}
+function removeOpt(index,oi){menuDraft[index].opts.splice(oi,1);markDirty();draw()}
+function setOut(index,flag){menuDraft[index].out=flag;markDirty();draw()}
+function bulkOut(ci,flag){const cat=menuCats()[ci];menuDraft.forEach(item=>{if(item.cat===cat)item.out=flag});markDirty();draw()}
+function addMenuItem(){const id=Math.max(0,...MENU.map(item=>Number(item.id)||0),...menuDraft.map(item=>Number(item.id)||0))+1;menuDraft.push({id,cat:'定食',n:'',p:0,e:'',out:false,opts:[]});menuDirty=true;menuMessage='';draw()}
 function removeMenuItem(index){menuDraft.splice(index,1);menuDirty=true;menuMessage='';draw()}
-function cancelMenuDraft(){menuDraft=MENU.map(item=>({...item}));menuDirty=false;menuMessage='';draw()}
+function cancelMenuDraft(){menuDraft=cloneMenu(MENU);menuDirty=false;menuMessage='';draw()}
 async function saveMenuDraft(){
- const menu=menuDraft.map(item=>({...item,id:Number(item.id),n:String(item.n).trim(),cat:String(item.cat).trim(),p:Number(item.p),e:String(item.e||'')}));
- if(menu.some(item=>!item.n||!item.cat||!Number.isFinite(item.p)||item.p<0)||new Set(menu.map(item=>item.id)).size!==menu.length){menuMessage='Enter a unique item, category, and non-negative price for every row.';draw();return}
+ const menu=menuDraft.map(item=>({...item,id:Number(item.id),n:String(item.n).trim(),cat:String(item.cat).trim(),p:Number(item.p),e:String(item.e||''),out:item.out===true,opts:(item.opts||[]).map(o=>({n:String(o.n).trim(),p:Number(o.p)||0})).filter(o=>o.n)}));
+ if(menu.some(item=>!item.n||!item.cat||!Number.isFinite(item.p)||item.p<0||item.opts.some(o=>o.p<0))||new Set(menu.map(item=>item.id)).size!==menu.length){menuMessage='Enter a unique item, category, and non-negative price for every row.';draw();return}
  menuSaving=true;menuMessage='';draw();
- try{await window.firebaseSync.saveMenu(menu);MENU=menu;menuDraft=menu.map(item=>({...item}));menuDirty=false;menuMessage='Menu saved.'}
+ try{await window.firebaseSync.saveMenu(menu);MENU=menu;menuDraft=cloneMenu(menu);menuDirty=false;menuMessage='Menu saved.'}
  catch(error){menuMessage=error.message||'Could not save the menu.'}
  menuSaving=false;draw();
 }

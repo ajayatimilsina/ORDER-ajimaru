@@ -107,6 +107,16 @@
         },
         "e": {
           ".validate": "newData.isString() && newData.val().length <= 16"
+        },
+        "out": {
+          ".validate": "newData.isBoolean()"
+        },
+        "opts": {
+          "$optId": {
+            ".validate": "newData.hasChildren(['n', 'p'])",
+            "n": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+            "p": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" }
+          }
         }
       }
     }
