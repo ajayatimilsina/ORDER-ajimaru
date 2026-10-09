@@ -58,16 +58,20 @@ const NAV=[['menu','menu.html','Menu'],['kitchen','kitchen.html','Kitchen'],['re
 function buildNav(){document.getElementById('nav').innerHTML=`<b>⚓ あじまるや & 中島駅</b><a href="index.html">Home</a><a href="customer.html#t=1">Customer page</a><a href="delivery.html">配達ページ</a>${NAV.map(([v,href,label])=>`<a href="${href}" class="${v==view?'on':''}">${label}</a>`).join('')}<button id="b-auth" onclick="toggleStaffAuth()">Staff sign in</button>`}
 function home(){return `<h2>Staff</h2><div class="g">${[['menu.html','Menu'],['kitchen.html','Kitchen'],['register.html','Register 会計'],['qr.html','QR Sheet'],['settings.html','営業・配達設定'],['customer.html#t=1','Customer page'],['delivery.html','配達ページ (Delivery)']].map(([href,label])=>`<a class="c" href="${href}" style="color:inherit;text-decoration:none"><b>${label}</b></a>`).join('')}</div>`}
 const dsettings=()=>({hours:{open:'11:00',close:'22:00',closed:false,...settings.hours},delivery:{open:'11:00',close:'21:00',extra:0,eta:45,markup:30,closed:false,...settings.delivery}});
-async function setSetting(group,field,value){const next=dsettings();next[group][field]=value;try{await window.firebaseSync.saveSettings(next);settingsMessage='Saved.'}catch(error){settingsMessage=error.message||'Could not save.'}draw()}
-const adjustExtra=delta=>setSetting('delivery','extra',Math.max(-240,Math.min(240,(Number(dsettings().delivery.extra)||0)+delta)));
+async function setSetting(group,field,value){const next=curSettings();next[group][field]=value;try{await window.firebaseSync.saveSettings(next);settingsDraft=null;settingsMessage='Saved.'}catch(error){settingsMessage=error.message||'Could not save.'}draw()}
+let settingsDraft=null;
+const curSettings=()=>settingsDraft||dsettings();
+function editSetting(group,field,value){settingsDraft=curSettings();settingsDraft[group][field]=value;settingsMessage='';const save=document.getElementById('settings-save');if(save)save.disabled=false}
+async function saveSettingsDraft(){try{await window.firebaseSync.saveSettings(curSettings());settingsDraft=null;settingsMessage='Saved.'}catch(error){settingsMessage=error.message||'Could not save.'}draw()}
+const adjustExtra=delta=>setSetting('delivery','extra',Math.max(-240,Math.min(240,(Number(curSettings().delivery.extra)||0)+delta)));
 function settingsView(){
  if(!staffSignedIn)return staffGate();
- const {hours:h,delivery:d}=dsettings();
- const time=(group,field,label,v)=>`<label style="display:block;margin:8px 0">${label} <input type="time" value="${v}" onchange="setSetting('${group}','${field}',this.value)"></label>`;
- const num=(group,field,label,v,min,max)=>`<label style="display:block;margin:8px 0">${label} <input type="number" min="${min}" max="${max}" step="1" value="${v}" style="width:100px" onchange="setSetting('${group}','${field}',Math.min(${max},Math.max(${min},Math.round(+this.value||0))))"></label>`;
+ const {hours:h,delivery:d}=curSettings();
+ const time=(group,field,label,v)=>`<label style="display:block;margin:8px 0">${label} <input type="time" value="${v}" oninput="editSetting('${group}','${field}',this.value)"></label>`;
+ const num=(group,field,label,v,min,max)=>`<label style="display:block;margin:8px 0">${label} <input type="number" min="${min}" max="${max}" step="1" value="${v}" style="width:100px" oninput="editSetting('${group}','${field}',Math.min(${max},Math.max(${min},Math.round(+this.value||0))))"></label>`;
  const stop=(group,closed)=>`<button class="${closed?'p':''}" onclick="setSetting('${group}','closed',${!closed})">${closed?'受付を再開':'受付を停止 (営業終了)'}</button>`;
  const extra=Number(d.extra)||0;
- return `<h2>営業時間・配達設定</h2>${settingsMessage?`<p class="m" role="status">${escapeHtml(settingsMessage)}</p>`:''}<div class="g">
+ return `<div class="r"><h2>営業時間・配達設定</h2><button id="settings-save" class="p" onclick="saveSettingsDraft()" ${settingsDraft?'':'disabled'}>保存</button></div>${settingsMessage?`<p class="m" role="status">${escapeHtml(settingsMessage)}</p>`:''}<div class="g">
  <div class="c"><h3>営業時間 (店内注文)</h3><p><b id="live-h">${escapeHtml(bannerText('営業時間',h))}</b></p>${time('hours','open','開始',h.open)}${time('hours','close','終了',h.close)}${stop('hours',h.closed)}</div>
  <div class="c"><h3>配達</h3><p><b id="live-d">${escapeHtml(bannerText('配達受付',d))}</b></p>${time('delivery','open','開始',d.open)}${time('delivery','close','終了',d.close)}${num('delivery','eta','配達所要時間 (分)',d.eta,5,240)}${num('delivery','markup','配達価格の上乗せ (%)',d.markup,0,200)}${stop('delivery',d.closed)}
  <hr><div class="m">時間調整 (現在 ${extra>0?'延長 +':extra<0?'短縮 ':''}${extra}分)</div><div class="r" style="justify-content:flex-start;flex-wrap:wrap"><button onclick="adjustExtra(-15)">短縮 −15</button><button onclick="adjustExtra(-5)">短縮 −5</button><button onclick="adjustExtra(5)">延長 +5</button><button onclick="adjustExtra(15)">延長 +15</button><button onclick="adjustExtra(30)">延長 +30</button><button onclick="setSetting('delivery','extra',0)">リセット</button></div></div></div>`}
