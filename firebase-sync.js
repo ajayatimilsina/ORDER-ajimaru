@@ -120,6 +120,20 @@ async function saveMenu(menu) {
   await set(ref(database, 'menu'), menuRecord(menu));
 }
 
+async function saveSettings(settings) {
+  if (!isStaff(auth.currentUser)) throw new Error('Staff sign-in required.');
+  await set(ref(database, 'settings'), settings);
+}
+
+async function signInCustomer() {
+  const result = await signInWithPopup(auth, new GoogleAuthProvider());
+  return result.user;
+}
+
+onValue(ref(database, 'settings'), snapshot => {
+  emit('firebase-settings', { settings: snapshot.val() || {} });
+}, error => emit('firebase-sync-error', { message: error.message }));
+
 onValue(ref(database, 'menu'), snapshot => {
   emit('firebase-menu', { menu: snapshot.exists() ? normalizeMenu(snapshot.val()) : null });
 }, error => emit('firebase-sync-error', { message: error.message }));
@@ -158,13 +172,21 @@ onAuthStateChanged(auth, user => {
     staffOrdersListener();
     staffOrdersListener = null;
   }
-  emit('firebase-auth-changed', { isStaff: staff, email: staff ? user.email : '' });
+  emit('firebase-auth-changed', {
+    isStaff: staff,
+    email: staff ? user.email : '',
+    signedIn: Boolean(user && !user.isAnonymous),
+    userEmail: user && !user.isAnonymous ? user.email || '' : '',
+    displayName: user && !user.isAnonymous ? user.displayName || '' : ''
+  });
 });
 
 window.firebaseSync = {
   createCustomerOrder,
   ensureMenu,
   saveMenu,
+  saveSettings,
+  signInCustomer,
   signInStaff,
   signOut: () => signOut(auth),
   updateOrder: (key, patch) => update(ref(database, `orders/${key}`), patch),

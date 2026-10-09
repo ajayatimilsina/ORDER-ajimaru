@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>あじまるや | 配達ご注文</title>
+<style>
+:root{box-sizing:border-box;--bg:#f7f4ef;--card:#fff;--tx:#1e2a32;--mut:#6b7780;--ac:#0f5c7a;--bd:#ddd6ca;--ok:#2f7d4f;--warn:#c27a10}
+@media(prefers-color-scheme:dark){:root{--bg:#14191d;--card:#1e262c;--tx:#eceae4;--mut:#9aa6ae;--ac:#5bb5d6;--bd:#33404a;--ok:#5fc283;--warn:#e8a73c}}
+*{box-sizing:inherit}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--bd);padding:14px max(16px,calc((100vw - 980px)/2))}
+header b{font-size:18px}main,#status{max-width:980px;margin:auto;padding:14px}
+#status{font-weight:700}#status.closed{color:var(--warn)}#status.open{color:var(--ok)}
+button,select,input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:8px 10px}
+button{cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:5px 0;flex-wrap:wrap}
+.muted{color:var(--mut)}.section{margin-top:18px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:10px}
+.item,.panel{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px}.item h3{margin:0 0 5px;font-size:16px}.price{color:var(--mut)}
+.qty{display:flex;align-items:center;gap:12px;margin-top:10px}.qty button{min-width:40px;font-size:19px}
+.tag{display:inline-block;background:var(--ac);color:#fff;border-radius:99px;padding:2px 8px;font-size:12px}.preparing{background:#bd7917}.delivering{background:#7a4fc2}.served{background:var(--ok)}
+label{display:block;margin:8px 0;line-height:1.4}.form input{width:100%}
+.order{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--bd)}
+.summary{position:sticky;bottom:0;margin:14px 0 0;padding:12px;background:var(--card);border:1px solid var(--bd);border-radius:8px;box-shadow:0 -4px 18px #0001}
+</style>
+</head>
+<body>
+<header><b>あじまるや & 中島駅</b><span class="muted"> · 配達ご注文</span></header>
+<div id="status"></div>
+<main id="app"></main>
+<script src="hours.js"></script>
+<script type="module" src="firebase-sync.js"></script>
+<script>
+let MENU=[],settings={},orders=[],cart={},riceLarge={},naanSpice='',allergy='なし',user={signedIn:false},pending=false,message='',lastOpen=null;
+const profile={name:'',phone:'',postal:'',address:'',landmark:''};
+try{Object.assign(profile,JSON.parse(localStorage.getItem('hh_delivery_profile')||'{}'))}catch(e){}
+const yen=n=>'¥'+Math.round(n).toLocaleString();
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const markup=()=>{const v=Number(settings.delivery?.markup);return Number.isFinite(v)?v:30};
+const dp=p=>Math.round(p*(1+markup()/100));
+const shown=()=>MENU.filter(item=>item.id!==15&&item.id!==16);
+const groups=()=>[...new Set(['定食','ラーメン','ナンセット','サブメニュー','ドリンク','居酒屋メニュー',...shown().map(i=>i.cat)])].filter(c=>shown().some(i=>i.cat===c)).map(c=>[c,shown().filter(i=>i.cat===c)]);
+const statusLabel={new:'受付済み',preparing:'調理中',delivering:'配達中',served:'配達完了'};
+const deliveryOpen=()=>openState(settings.delivery).open;
+function buildItems(){return shown().filter(m=>cart[m.id]).flatMap(m=>{
+ const large=m.cat==='定食'?Math.min(riceLarge[m.id]||0,cart[m.id]):0,normal=cart[m.id]-large,spice=m.id===7&&naanSpice!==''?`（辛さ ${naanSpice}）`:'';
+ return [normal?{n:m.n+spice,p:dp(m.p),q:normal}:null,large?{n:m.n+'（ご飯大）'+spice,p:dp(m.p+100),q:large}:null].filter(Boolean)})}
+function profileError(){
+ if(!profile.name.trim())return 'お名前を入力してください。';
+ if(!/^[0-9+\-() ]{9,20}$/.test(profile.phone.trim()))return '電話番号を正しく入力してください。';
+ if(!/^\d{3}-?\d{4}$/.test(profile.postal.trim()))return '郵便番号（例 123-4567）を入力してください。';
+ if(!profile.address.trim())return '住所を入力してください。';
+ if(!profile.landmark.trim())return '近くのスーパーまたはコンビニを入力してください。';
+ return '';
+}
+function setP(field,value){profile[field]=value;try{localStorage.setItem('hh_delivery_profile',JSON.stringify(profile))}catch(e){}}
+function field(key,label,type,ph){return `<label>${label}<input type="${type||'text'}" value="${esc(profile[key])}" placeholder="${ph||''}" oninput="setP('${key}',this.value)"></label>`}
+function draw(){
+ const items=buildItems(),count=items.reduce((s,i)=>s+i.q,0),total=items.reduce((s,i)=>s+i.p*i.q,0);
+ const mine=orders.filter(o=>o.type==='delivery'&&Date.now()-o.t<864e5).sort((a,b)=>b.t-a.t);
+ const login=user.signedIn
+  ?`<div class="panel row"><span>ログイン中：<b>${esc(user.displayName||user.userEmail)}</b></span><button onclick="firebaseSync.signOut()">ログアウト</button></div>
+    <div class="panel form" style="margin-top:10px"><b>お届け先</b>${field('name','お名前','text')}${field('phone','電話番号','tel','090-1234-5678')}${field('postal','郵便番号','text','123-4567')}${field('address','住所','text','都道府県・市区町村・番地・建物名')}${field('landmark','近くのスーパー／コンビニ','text','例：セブンイレブン○○店')}
+    <label>アレルギー<select onchange="allergy=this.value">${['なし','あり'].map(v=>`<option ${allergy===v?'selected':''}>${v}</option>`).join('')}</select></label></div>`
+  :`<div class="panel"><b>ご注文にはログインが必要です</b><p class="muted">Googleアカウントでログインしてください。</p><button class="primary" onclick="login()">Googleでログイン</button></div>`;
+ document.getElementById('app').innerHTML=`${message?`<p role="alert" class="muted">${esc(message)}</p>`:''}${login}
+ ${mine.length?`<section class="section panel"><b>配達状況（リアルタイム）</b>${mine.map(o=>`<div class="order"><div><b>注文 #${o.id}</b><div class="muted">${o.items.map(i=>`${esc(i.n)} × ${i.q}`).join(', ')}</div><div class="muted">${new Date(o.t).toLocaleTimeString()} · ${yen(o.items.reduce((s,i)=>s+i.p*i.q,0))}</div>${o.status!=='served'?`<div class="eta" data-t="${o.t}"></div>`:''}</div><span class="tag ${o.status}">${statusLabel[o.status]||o.status}</span></div>`).join('')}</section>`:''}
+ <p class="muted">配達メニューは店内価格より ${markup()}% 高くなります。お支払いは配達時です。</p>
+ ${MENU.length?'':'<p class="muted">メニューを読み込み中…</p>'}
+ ${groups().map(([cat,list])=>`<section class="section"><h2 style="font-size:17px;margin:0 0 8px">${esc(cat)}</h2><div class="grid">${list.map(m=>`<article class="item"><h3>${esc(m.n)}</h3><div class="price">${yen(dp(m.p))}</div>${m.cat==='定食'?`<label>ご飯大盛り<select onchange="riceLarge[${m.id}]=Number(this.value);draw()"><option value="0" ${!riceLarge[m.id]?'selected':''}>普通</option>${Array.from({length:cart[m.id]||0},(_,i)=>i+1).map(q=>`<option value="${q}" ${riceLarge[m.id]===q?'selected':''}>${q}個を大盛り</option>`).join('')}</select> +${yen(dp(m.p+100)-dp(m.p))} / 個</label>`:''}${m.id===7?`<label>辛さ<select onchange="naanSpice=this.value;draw()"><option value="" ${naanSpice===''?'selected':''}>選択</option>${[0,1,2].map(l=>`<option value="${l}" ${naanSpice==l?'selected':''}>${l}</option>`).join('')}</select></label>`:''}<div class="qty"><button onclick="qty(${m.id},-1)">−</button><b>${cart[m.id]||0}</b><button onclick="qty(${m.id},1)">+</button></div></article>`).join('')}</div></section>`).join('')}
+ <div class="summary row"><b>${count}点 · ${yen(total)}</b><button class="primary" ${count&&user.signedIn&&deliveryOpen()&&!pending?'':'disabled'} onclick="sendOrder()">${pending?'送信中…':'配達を注文する'}</button></div>`;
+ tick();
+}
+function qty(id,d){cart[id]=Math.max(0,(cart[id]||0)+d);riceLarge[id]=Math.min(riceLarge[id]||0,cart[id]);draw()}
+function login(){message='';window.firebaseSync.signInCustomer().catch(error=>{message=error.message;draw()})}
+async function sendOrder(){
+ const items=buildItems();if(!items.length)return;
+ if(!deliveryOpen()){message='現在、配達の受付時間外です。';draw();return}
+ const error=profileError();if(error){message=error;draw();return}
+ pending=true;message='';draw();
+ try{
+  const customer=Object.fromEntries(Object.entries(profile).map(([k,v])=>[k,v.trim()]));
+  await window.firebaseSync.createCustomerOrder({id:Date.now(),table:0,type:'delivery',customer,items,status:'new',paid:false,guestType:'All',adultCount:1,childCount:0,allergy,t:Date.now()});
+  cart={};riceLarge={};naanSpice='';message='ご注文を受け付けました。';
+ }catch(e){message='注文を送信できませんでした。受付状況と通信状態を確認してください。'}
+ pending=false;draw();
+}
+function tick(){
+ const cfg=settings.delivery,st=openState(cfg),el=document.getElementById('status');
+ el.textContent=bannerText('配達受付',cfg)||'配達受付時間は未設定です';
+ el.className=st.known?(st.open?'open':'closed'):'';
+ const eta=Number(cfg?.eta)||45;
+ document.querySelectorAll('.eta').forEach(e=>{const left=Math.ceil((Number(e.dataset.t)+eta*60000-Date.now())/60000);e.textContent=left>0?`お届けまで あと約${left}分`:'まもなくお届けします'});
+ return st.open;
+}
+const onOrders=list=>{orders=list;draw()};
+window.addEventListener('firebase-auth-changed',event=>{user=event.detail;if(user.signedIn)window.firebaseSync.startCustomer(onOrders).catch(()=>{message='注文システムに接続できません。';draw()});else orders=[];draw()});
+window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu))MENU=event.detail.menu;draw()});
+window.addEventListener('firebase-settings',event=>{settings=event.detail.settings||{};draw()});
+window.addEventListener('firebase-sync-error',event=>{message=event.detail?.message||'データベースに接続できません。';draw()});
+setInterval(()=>{const open=tick();if(open!==lastOpen){lastOpen=open;draw()}},1000);
+draw();
+</script>
+</body>
+</html>
