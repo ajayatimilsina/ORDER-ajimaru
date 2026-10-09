@@ -21,7 +21,8 @@ function load(){try{receiptHistory=JSON.parse(localStorage.getItem('hh_receipts'
 function save(){try{localStorage.setItem('hh_orders',JSON.stringify(orders))}catch(e){}}
 window.addEventListener('firebase-sync-ready',()=>{staffSyncReady=true;draw()},{once:true});
 window.addEventListener('firebase-auth-changed',event=>{staffSignedIn=event.detail.isStaff;staffEmail=event.detail.email;if(staffSignedIn)window.firebaseSync.ensureMenu(MENU).catch(error=>{syncError=error.message});draw()});
-window.addEventListener('firebase-orders',event=>{orders=event.detail.orders;draw()});
+window.addEventListener('firebase-orders',event=>{orders=event.detail.orders;if(staffSignedIn)orders.filter(o=>!o.stockApplied&&!stockBusy.has(o.key)).forEach(o=>{stockBusy.add(o.key);window.firebaseSync.applyOrderStock(o).catch(error=>{syncError=error.message;draw()})});draw()});
+window.addEventListener('firebase-stock',event=>{stock=event.detail.stock;draw()});
 window.addEventListener('firebase-menu',event=>{if(Array.isArray(event.detail.menu)){MENU=event.detail.menu;if(!menuDirty)menuDraft=cloneMenu(MENU)}draw()});
 window.addEventListener('firebase-sync-error',event=>{syncError=event.detail?.message||'Firebase connection failed.';draw()});
 window.addEventListener('firebase-settings',event=>{settings=event.detail.settings||{};draw()});
@@ -54,9 +55,24 @@ async function saveMenuDraft(){
  catch(error){menuMessage=error.message||'Could not save the menu.'}
  menuSaving=false;draw();
 }
-const NAV=[['menu','menu.html','Menu'],['kitchen','kitchen.html','Kitchen'],['register','register.html','Register 会計'],['qr','qr.html','QR Sheet'],['settings','settings.html','営業・配達設定']];
+// Inventory 棚卸
+let stock={},stockBusy=new Set(),invCount={},invMessage='';
+const LOW_STOCK=5;
+function invBadge(rec){if(!rec)return '<span class="m">未管理</span>';if(rec.qty<=0)return '<span class="tag" style="background:#b42318">欠品</span>';if(rec.qty<LOW_STOCK)return '<span class="tag preparing">残りわずか</span>';return '<span class="tag served">OK</span>'}
+function invDiffText(id){const rec=stock[id],v=invCount[id];if(!rec||v===undefined||v==='')return '';const d=Math.floor(Number(v))-rec.qty;return `差異 ${d>0?'+':''}${d}`}
+function inventoryView(){
+ if(!staffSignedIn)return staffGate();
+ const row=item=>{const rec=stock[item.id],v=invCount[item.id]??'';return `<div class="c" style="${rec&&rec.qty<=0?'opacity:.65':''}"><div class="r"><b>#${item.id} ${escapeHtml(item.n)}</b>${invBadge(rec)}</div><div class="r"><span>システム在庫</span><b>${rec?rec.qty:'—'}</b></div><div class="r"><span>実数</span><input type="number" min="0" step="1" value="${escapeHtml(v)}" style="width:90px" oninput="setInvCount(${item.id},this.value)"></div><div class="r"><b id="inv-diff-${item.id}">${invDiffText(item.id)}</b><span><button class="p" onclick="confirmCount(${item.id})">${rec?'棚卸を確定':'管理開始'}</button>${rec?` <button onclick="untrack(${item.id})">管理解除</button>`:''}</span></div>${rec&&rec.countedAt?`<div class="m">前回棚卸 ${new Date(rec.countedAt).toLocaleString()} · 差異 ${rec.diff>0?'+':''}${rec.diff}</div>`:''}</div>`};
+ const cats=[...new Set(MENU.map(m=>m.cat))];
+ return `<div class="r"><h2>Inventory 棚卸</h2></div><p class="m">注文ごとに在庫が自動で減り、0で自動的に欠品、${LOW_STOCK}未満で「残りわずか」を表示します。</p>${invMessage?`<p class="m" role="status">${escapeHtml(invMessage)}</p>`:''}${cats.map(cat=>`<h3>${escapeHtml(cat)}</h3><div class="g">${MENU.filter(m=>m.cat===cat).map(row).join('')}</div>`).join('')}`;
+}
+function setInvCount(id,v){invCount[id]=v;const el=document.getElementById('inv-diff-'+id);if(el)el.textContent=invDiffText(id)}
+async function confirmCount(id){const v=invCount[id];if(v===undefined||v===''||!(Number(v)>=0)){invMessage='実数を入力してください。';draw();return}
+ try{await window.firebaseSync.setStock(id,v,!!stock[id]);delete invCount[id];invMessage='保存しました。'}catch(error){invMessage=error.message||'保存できませんでした。'}draw()}
+async function untrack(id){try{await window.firebaseSync.untrackStock(id)}catch(error){invMessage=error.message}draw()}
+const NAV=[['menu','menu.html','Menu'],['inventory','inventory.html','Inventory 棚卸'],['kitchen','kitchen.html','Kitchen'],['register','register.html','Register 会計'],['qr','qr.html','QR Sheet'],['settings','settings.html','営業・配達設定']];
 function buildNav(){document.getElementById('nav').innerHTML=`<b>⚓ あじまるや & 中島駅</b><a href="index.html">Home</a><a href="customer.html#t=1">Customer page</a><a href="delivery.html">配達ページ</a>${NAV.map(([v,href,label])=>`<a href="${href}" class="${v==view?'on':''}">${label}</a>`).join('')}<button id="b-auth" onclick="toggleStaffAuth()">Staff sign in</button>`}
-function home(){return `<h2>Staff</h2><div class="g">${[['menu.html','Menu'],['kitchen.html','Kitchen'],['register.html','Register 会計'],['qr.html','QR Sheet'],['settings.html','営業・配達設定'],['customer.html#t=1','Customer page'],['delivery.html','配達ページ (Delivery)']].map(([href,label])=>`<a class="c" href="${href}" style="color:inherit;text-decoration:none"><b>${label}</b></a>`).join('')}</div>`}
+function home(){return `<h2>Staff</h2><div class="g">${[['menu.html','Menu'],['inventory.html','Inventory 棚卸'],['kitchen.html','Kitchen'],['register.html','Register 会計'],['qr.html','QR Sheet'],['settings.html','営業・配達設定'],['customer.html#t=1','Customer page'],['delivery.html','配達ページ (Delivery)']].map(([href,label])=>`<a class="c" href="${href}" style="color:inherit;text-decoration:none"><b>${label}</b></a>`).join('')}</div>`}
 const dsettings=()=>({hours:{open:'11:00',close:'22:00',closed:false,...settings.hours},delivery:{open:'11:00',close:'21:00',extra:0,eta:45,markup:30,closed:false,...settings.delivery}});
 async function setSetting(group,field,value){const next=curSettings();next[group][field]=value;try{await window.firebaseSync.saveSettings(next);settingsDraft=null;settingsMessage='Saved.'}catch(error){settingsMessage=error.message||'Could not save.'}draw()}
 let settingsDraft=null;
@@ -93,7 +109,7 @@ function renderQrCell(el, value){
 }
 function draw(){
  const authButton=document.getElementById('b-auth');authButton.textContent=staffSignedIn?`Sign out ${staffEmail}`:staffSyncReady?'Staff sign in':'Connecting…';authButton.disabled=!staffSyncReady;
- document.getElementById('app').innerHTML=(syncError?`<p role="alert" class="m">${escapeHtml(syncError)}</p>`:'')+({home,menu:menuManager,kitchen,register,qr,settings:settingsView})[view]();
+ document.getElementById('app').innerHTML=(syncError?`<p role="alert" class="m">${escapeHtml(syncError)}</p>`:'')+({home,menu:menuManager,inventory:inventoryView,kitchen,register,qr,settings:settingsView})[view]();
  autoPrint();
  if(view=='qr'){document.querySelectorAll('[data-q]').forEach(d=>renderQrCell(d, customerUrl(d.dataset.q)));document.querySelectorAll('[data-qd]').forEach(d=>renderQrCell(d,deliveryUrl()))}
 }

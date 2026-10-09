@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, signInWithRedirect, signOut } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
-import { get, getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
+import { get, getDatabase, onChildAdded, onChildChanged, onChildRemoved, onValue, push, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAk81HxCeRB3IGekGcsE9OVHmi1sFdLwYM',
@@ -129,6 +129,50 @@ async function saveSettings(settings) {
   await set(ref(database, 'settings'), settings);
 }
 
+function normalizeStock(value) {
+  const items = {};
+  Object.entries(value?.items || {}).forEach(([id, rec]) => {
+    if (rec && Number.isFinite(Number(rec.qty))) items[id] = { qty: Number(rec.qty), countedAt: Number(rec.countedAt) || 0, diff: Number(rec.diff) || 0 };
+  });
+  return items;
+}
+
+async function setStock(id, qty, counted) {
+  if (!isStaff(auth.currentUser)) throw new Error('Staff sign-in required.');
+  const q = Math.max(0, Math.floor(Number(qty)));
+  if (!Number.isFinite(q)) throw new Error('Enter a valid quantity.');
+  const prev = (await get(ref(database, `stock/items/${id}`))).val();
+  const rec = counted
+    ? { qty: q, countedAt: Date.now(), diff: q - (Number(prev?.qty) || 0) }
+    : { qty: q, countedAt: Number(prev?.countedAt) || 0, diff: Number(prev?.diff) || 0 };
+  const updates = { [`stock/items/${id}`]: rec };
+  if (!(await get(ref(database, 'stock/since'))).exists()) updates['stock/since'] = Date.now();
+  if (q === 0) updates[`menu/${id}/out`] = true;
+  else if (prev && Number(prev.qty) === 0) updates[`menu/${id}/out`] = false;
+  await update(ref(database), updates);
+}
+
+async function untrackStock(id) {
+  if (!isStaff(auth.currentUser)) throw new Error('Staff sign-in required.');
+  await remove(ref(database, `stock/items/${id}`));
+}
+
+async function applyOrderStock(order) {
+  if (!isStaff(auth.currentUser) || !order?.key || order.stockApplied) return;
+  const since = Number((await get(ref(database, 'stock/since'))).val()) || 0;
+  if (!since || Number(order.t) < since) return;
+  const flag = await runTransaction(ref(database, `orders/${order.key}/stockApplied`), cur => (cur === true ? undefined : true));
+  if (!flag.committed) return;
+  const need = {};
+  Object.values(order.items || {}).forEach(item => {
+    if (item && Number.isFinite(Number(item.mid))) need[item.mid] = (need[item.mid] || 0) + (Number(item.q) || 0);
+  });
+  for (const [mid, q] of Object.entries(need)) {
+    const result = await runTransaction(ref(database, `stock/items/${mid}`), cur => (cur && Number.isFinite(Number(cur.qty)) ? { ...cur, qty: Math.max(0, Number(cur.qty) - q) } : undefined));
+    if (result.committed && result.snapshot.val()?.qty === 0) await update(ref(database, `menu/${mid}`), { out: true });
+  }
+}
+
 async function signInCustomer() {
   const provider = new GoogleAuthProvider();
   try {
@@ -149,6 +193,14 @@ onValue(ref(database, 'settings'), snapshot => {
 onValue(ref(database, 'menu'), snapshot => {
   emit('firebase-menu', { menu: snapshot.exists() ? normalizeMenu(snapshot.val()) : null });
 }, error => emit('firebase-sync-error', { message: error.message }));
+
+let stockListener = null;
+function listenForStock(user) {
+  if (!isStaff(user) || stockListener) return;
+  stockListener = onValue(ref(database, 'stock'), snapshot => {
+    emit('firebase-stock', { stock: normalizeStock(snapshot.val()) });
+  }, error => emit('firebase-sync-error', { message: error.message }));
+}
 
 function listenForStaffOrders(user) {
   if (!isStaff(user) || staffOrdersListener) return;
@@ -179,6 +231,11 @@ function listenForStaffOrders(user) {
 
 onAuthStateChanged(auth, user => {
   const staff = isStaff(user);
+  if (staff) listenForStock(user);
+  else if (stockListener) {
+    stockListener();
+    stockListener = null;
+  }
   if (staff) listenForStaffOrders(user);
   else if (staffOrdersListener) {
     staffOrdersListener();
@@ -198,6 +255,9 @@ window.firebaseSync = {
   ensureMenu,
   saveMenu,
   saveSettings,
+  setStock,
+  untrackStock,
+  applyOrderStock,
   signInCustomer,
   signInStaff,
   signOut: () => signOut(auth),

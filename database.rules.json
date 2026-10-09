@@ -34,6 +34,9 @@
             "p": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000"
             },
+            "mid": {
+              ".validate": "newData.isNumber()"
+            },
             "q": {
               ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100"
             }
@@ -62,6 +65,9 @@
         },
         "receipt": {
           ".validate": "newData.isBoolean()"
+        },
+        "stockApplied": {
+          ".validate": "newData.isBoolean() && (newData.val() === false || auth.token.email === 'ajayatimilsina1@gmail.com')"
         },
         "t": {
           ".validate": "newData.isNumber() && newData.val() <= now"
@@ -119,6 +125,10 @@
           }
         }
       }
+    },
+    "stock": {
+      ".read": "auth != null && auth.token.email === 'ajayatimilsina1@gmail.com' && auth.token.firebase.sign_in_provider === 'google.com'",
+      ".write": "auth != null && auth.token.email === 'ajayatimilsina1@gmail.com' && auth.token.firebase.sign_in_provider === 'google.com'"
     }
   }
 }

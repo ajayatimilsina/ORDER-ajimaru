@@ -62,7 +62,7 @@ async function sendOrder(){
   const drink=drinkTypes.find(option=>option.id===otherDrinkType),price=(item.id===15?otherPrice:item.id===16?otherDrinkPrice:item.p)+(optOf(item)?.p||0);
   const name=item.id===15?(otherName||item.n):item.id===16?`${drink?drink.n:item.n}${[5,6].includes(otherDrinkType)&&otherDrinkOption?`（${otherDrinkOption}）`:''}`:item.n;
   const spice=(item.id===7&&naanSpice!==''?`（辛さ ${naanSpice}）`:'')+(optOf(item)?`（${optOf(item).n}）`:'');
-  return [normal?{n:name+spice,p:price,q:normal}:null,large?{n:name+'（ご飯大）'+spice,p:price+100,q:large}:null].filter(Boolean);
+  return [normal?{mid:item.id,n:name+spice,p:price,q:normal}:null,large?{mid:item.id,n:name+'（ご飯大）'+spice,p:price+100,q:large}:null].filter(Boolean);
  });
  if(!items.length)return;
  if(!openState(settings.hours).open){syncMessage='現在は営業時間外です。';draw();return}

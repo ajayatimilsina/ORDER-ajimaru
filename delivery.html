@@ -53,7 +53,7 @@ function blockReason(count){
 }
 function buildItems(){return shown().filter(m=>cart[m.id]&&!m.out).flatMap(m=>{
  const op=optOf(m)?.p||0,large=m.cat==='定食'?Math.min(riceLarge[m.id]||0,cart[m.id]):0,normal=cart[m.id]-large,spice=(m.id===7&&naanSpice!==''?`（辛さ ${naanSpice}）`:'')+(optOf(m)?`（${optOf(m).n}）`:'');
- return [normal?{n:m.n+spice,p:dp(m.p+op),q:normal}:null,large?{n:m.n+'（ご飯大）'+spice,p:dp(m.p+op+100),q:large}:null].filter(Boolean)})}
+ return [normal?{mid:m.id,n:m.n+spice,p:dp(m.p+op),q:normal}:null,large?{mid:m.id,n:m.n+'（ご飯大）'+spice,p:dp(m.p+op+100),q:large}:null].filter(Boolean)})}
 function profileError(){
  if(!profile.name.trim())return 'お名前を入力してください。';
  if(!/^[0-9+\-() ]{9,20}$/.test(profile.phone.trim()))return '電話番号を正しく入力してください。';
